@@ -152,6 +152,7 @@
 
       const scrollContainerRef = useRef(null);
       const todayRef = useRef(null);
+      const adminMonthScrollRefs = useRef([]);
 
       const ensureUserProfile = async (currentUser) => {
         if (!currentUser?.id) return null;
@@ -349,6 +350,10 @@
       const prevWeek = () => { const newDate = new Date(viewDate); newDate.setDate(viewDate.getDate() - 7); setViewDate(newDate); };
       const goToToday = () => setViewDate(todayDate);
       const openDayDetails = (day) => { setSelectedDay(day); setIsDayModalOpen(true); };
+      const scrollAdminMonthDays = (monthIndex, direction) => {
+        const container = adminMonthScrollRefs.current[monthIndex];
+        if (container) container.scrollBy({ left: direction * 360, behavior: 'smooth' });
+      };
 
       useEffect(() => {
         if (todayRef.current && scrollContainerRef.current && !isAdminModalOpen && currentView === 'dashboard') {
@@ -541,12 +546,17 @@
         );
       };
 
-      const Modal = ({ isOpen, onClose, title, children, icon: Icon, colorClass }) => {
+      const Modal = ({ isOpen, onClose, title, children, icon: Icon, colorClass, desktopFullScreen = false }) => {
         if (!isOpen) return null;
+        const modalPaddingClass = desktopFullScreen ? 'md:p-0' : 'md:p-6';
+        const modalPanelClass = desktopFullScreen
+          ? 'md:h-screen md:max-h-screen md:max-w-none md:rounded-none md:mt-0'
+          : 'md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl md:mt-0 md:rounded-t-2xl';
+
         return (
-          <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-6 pb-0">
+          <div className={`fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 pb-0 ${modalPaddingClass}`}>
             <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-            <div className="relative w-full h-full md:h-auto md:max-h-[90vh] md:max-w-4xl bg-white md:rounded-2xl shadow-2xl flex flex-col overflow-hidden modal-animate mt-12 md:mt-0 rounded-t-2xl md:rounded-t-2xl">
+            <div className={`relative w-full h-full bg-white shadow-2xl flex flex-col overflow-hidden modal-animate mt-12 rounded-t-2xl ${modalPanelClass}`}>
               <div className="w-full flex justify-center pt-3 pb-1 md:hidden bg-white" onClick={onClose}><div className="w-12 h-1.5 bg-slate-200 rounded-full"></div></div>
               <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 bg-white z-10">
                 <div className="flex items-center gap-3">
@@ -983,16 +993,24 @@
           </Modal>
 
           {/* ================= MODAL PAINEL ADMIN (INSERÇÃO NO SUPABASE) ================= */}
-          <Modal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} title="Gestão de Calendário" icon={Briefcase} colorClass="bg-brand-600">
+          <Modal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} title="Gestão de Calendário" icon={Briefcase} colorClass="bg-brand-600" desktopFullScreen={true}>
             {!adminSelectedDate ? (
               <div className="space-y-6">
                 <p className="text-sm text-slate-500 font-medium mb-6">Selecione o dia desejado nos blocos abaixo para adicionar um novo registro.</p>
                 {allYearMonths.map((month, mIdx) => (
                   <div key={mIdx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">
+                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
                       <h4 className="font-bold text-brand-900 capitalize text-sm md:text-base flex items-center gap-2"><CalendarIcon size={16} className="text-brand-500" /> {month.name}</h4>
+                      <div className="hidden md:flex items-center gap-2">
+                        <button type="button" onClick={() => scrollAdminMonthDays(mIdx, -1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver dias anteriores">
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button type="button" onClick={() => scrollAdminMonthDays(mIdx, 1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver próximos dias">
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex overflow-x-auto hide-scrollbar p-3 gap-2">
+                    <div ref={(el) => adminMonthScrollRefs.current[mIdx] = el} className="flex overflow-x-auto hide-scrollbar p-3 gap-2">
                       {month.days.map((day, dIdx) => {
                         const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '');
                         const hasEvent = hrEvents.some(e => isSameDay(new Date(e.date + 'T12:00:00'), day));
