@@ -64,6 +64,23 @@
 
     const SECTORS = ['Administrativo', 'Comercial', 'RH', 'Compras', 'Diretoria', 'Engenharia e PD&I', 'Produção', 'Financeiro', 'Almoxarifado'];
 
+    // --- FERIADOS PADRÃO (Sempre visíveis) ---
+    const MOCK_HOLIDAYS = [
+      { id: 'm1', date: '2026-01-01', name: 'Ano Novo', type: 'nacional' },
+      { id: 'm2', date: '2026-02-17', name: 'Carnaval', type: 'nacional' },
+      { id: 'm3', date: '2026-03-25', name: 'Data Magna do Ceará', type: 'estadual' },
+      { id: 'm4', date: '2026-04-03', name: 'Sexta-feira Santa', type: 'nacional' },
+      { id: 'm5', date: '2026-04-21', name: 'Tiradentes', type: 'nacional' },
+      { id: 'm6', date: '2026-05-01', name: 'Dia do Trabalhador', type: 'nacional' },
+      { id: 'm7', date: '2026-09-07', name: 'Independência do Brasil', type: 'nacional' },
+      { id: 'm8', date: '2026-10-12', name: 'Nossa Sr.a Aparecida', type: 'nacional' },
+      { id: 'm9', date: '2026-10-15', name: 'Emancipação de Caucaia', type: 'municipal' },
+      { id: 'm10', date: '2026-11-02', name: 'Finados', type: 'nacional' },
+      { id: 'm11', date: '2026-11-15', name: 'Proclamação da República', type: 'nacional' },
+      { id: 'm12', date: '2026-12-08', name: 'Nossa Sr.a da Conceição (Padroeira)', type: 'municipal' },
+      { id: 'm13', date: '2026-12-25', name: 'Natal', type: 'nacional' },
+    ];
+
     function App() {
       // --- ESTADOS (State) ---
       const todayDate = new Date(); // Agora utiliza a data atual real do sistema
@@ -142,6 +159,20 @@
         const { data: holidaysData } = await supabase.from('holidays').select('*');
         if (holidaysData) setDbHolidays(holidaysData);
       };
+
+      // --- LÓGICA MISTA DE FERIADOS (FIXOS + DB) ---
+      const allHolidays = useMemo(() => {
+        // Junta os feriados fixos (MOCK) com os do Supabase, evitando duplicados
+        const combined = [...MOCK_HOLIDAYS];
+        dbHolidays.forEach(dbHoliday => {
+          const exists = combined.some(h => h.date === dbHoliday.date && h.name === dbHoliday.name);
+          if (!exists) {
+            combined.push(dbHoliday);
+          }
+        });
+        // Ordena por data
+        return combined.sort((a, b) => new Date(a.date) - new Date(b.date));
+      }, [dbHolidays]);
 
       // --- LÓGICA DE AUTENTICAÇÃO ---
       const handleAuth = async (e) => {
@@ -301,12 +332,12 @@
       }, [todayDate]);
 
       const upcomingHolidaysList = useMemo(() => {
-        return dbHolidays.map(h => ({ ...h, exactDate: new Date(h.date + 'T12:00:00') }))
+        return allHolidays.map(h => ({ ...h, exactDate: new Date(h.date + 'T12:00:00') }))
           .filter(h => h.exactDate >= todayDate || isSameDay(h.exactDate, todayDate))
           .sort((a, b) => a.exactDate - b.exactDate).slice(0, 2).map(h => h.id);
-      }, [todayDate, dbHolidays]);
+      }, [todayDate, allHolidays]);
 
-      const filteredHolidays = useMemo(() => filter === 'todos' ? dbHolidays : dbHolidays.filter(h => h.type === filter), [filter, dbHolidays]);
+      const filteredHolidays = useMemo(() => filter === 'todos' ? allHolidays : allHolidays.filter(h => h.type === filter), [filter, allHolidays]);
 
       // --- COMPONENTES UI: EventCard ---
       const EventCard = ({ event }) => {
@@ -526,7 +557,7 @@
                       {currentWeekDays.map((day, index) => {
                         const isActualToday = isSameDay(day, todayDate); 
                         const hasHrEvent = hrEvents.some(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
-                        const hasHoliday = dbHolidays.some(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
+                        const hasHoliday = allHolidays.some(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
                         return (
                           <div key={index} ref={isActualToday ? todayRef : null} onClick={() => openDayDetails(day)}
                             className={`cursor-pointer snap-center flex-shrink-0 w-20 md:w-auto flex flex-col items-center justify-center py-4 px-2 rounded-xl border transition-all duration-300 relative ${isActualToday ? 'bg-gradient-to-b from-blue-500 to-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 transform scale-[1.05]' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:-translate-y-0.5'}`}
@@ -615,7 +646,7 @@
           <Modal isOpen={isDayModalOpen} onClose={() => setIsDayModalOpen(false)} title={formatFullDate(selectedDay)} icon={CalendarIcon} colorClass="bg-blue-500">
             {selectedDay && (() => {
                const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), selectedDay) && e.type !== 'Faturamento');
-               const dayHolidays = dbHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), selectedDay));
+               const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), selectedDay));
                const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), selectedDay) && b.type === 'Faturamento');
                const hasNothing = dayEvents.length === 0 && dayHolidays.length === 0 && dayBillings.length === 0;
 
@@ -681,7 +712,7 @@
                       if (!day) return <div key={`empty-${wIdx}-${dIdx}`} className="min-h-[80px] md:min-h-[100px] border-r border-slate-100 last:border-r-0 bg-slate-50/50"></div>;
                       const isActualToday = isSameDay(day, todayDate);
                       const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
-                      const dayHolidays = dbHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
+                      const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
                       const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), day) && b.type === 'Faturamento');
 
                       return (
