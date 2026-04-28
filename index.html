@@ -1004,10 +1004,10 @@
                   const monthBillings = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type === 'Faturamento');
 
                   return (
-                    <div key={mIdx} className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all ${isPastMonth ? 'border-slate-200/70 bg-slate-50/60 opacity-70' : 'border-slate-200'}`}>
-                      <div className={`${isPastMonth ? 'bg-slate-50/70' : 'bg-slate-50'} border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3`}>
+                    <div key={mIdx} className={`rounded-xl border shadow-sm overflow-hidden transition-all ${isPastMonth ? 'border-red-100 bg-red-50/70 opacity-80' : 'bg-white border-slate-200'}`}>
+                      <div className={`${isPastMonth ? 'bg-red-50/80 border-red-100' : 'bg-slate-50 border-slate-200'} border-b px-4 py-3 flex items-center justify-between gap-3`}>
                         <div className="flex items-center gap-3 min-w-0">
-                          <h4 className="font-bold text-brand-900 capitalize text-sm md:text-base flex items-center gap-2"><CalendarIcon size={16} className="text-brand-500" /> {month.name}</h4>
+                          <h4 className={`font-bold capitalize text-sm md:text-base flex items-center gap-2 ${isPastMonth ? 'text-red-700/80' : 'text-brand-900'}`}><CalendarIcon size={16} className={isPastMonth ? "text-red-400" : "text-brand-500"} /> {month.name}</h4>
                           <div className="hidden md:flex items-center gap-1.5">
                             {monthHolidays.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">🎌 {monthHolidays.length} feriado{monthHolidays.length > 1 ? 's' : ''}</span>}
                             {monthEvents.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">📌 {monthEvents.length} registro{monthEvents.length > 1 ? 's' : ''}</span>}
