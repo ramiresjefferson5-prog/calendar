@@ -997,34 +997,71 @@
             {!adminSelectedDate ? (
               <div className="space-y-6">
                 <p className="text-sm text-slate-500 font-medium mb-6">Selecione o dia desejado nos blocos abaixo para adicionar um novo registro.</p>
-                {allYearMonths.map((month, mIdx) => (
-                  <div key={mIdx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                      <h4 className="font-bold text-brand-900 capitalize text-sm md:text-base flex items-center gap-2"><CalendarIcon size={16} className="text-brand-500" /> {month.name}</h4>
-                      <div className="hidden md:flex items-center gap-2">
-                        <button type="button" onClick={() => scrollAdminMonthDays(mIdx, -1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver dias anteriores">
-                          <ChevronLeft size={16} />
-                        </button>
-                        <button type="button" onClick={() => scrollAdminMonthDays(mIdx, 1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver próximos dias">
-                          <ChevronRight size={16} />
-                        </button>
+                {allYearMonths.map((month, mIdx) => {
+                  const isPastMonth = mIdx < todayDate.getMonth();
+                  const monthHolidays = allHolidays.filter(h => month.days.some(day => isSameDay(new Date(h.date + 'T12:00:00'), day)));
+                  const monthEvents = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type !== 'Faturamento');
+                  const monthBillings = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type === 'Faturamento');
+
+                  return (
+                    <div key={mIdx} className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all ${isPastMonth ? 'border-slate-200/70 bg-slate-50/60 opacity-70' : 'border-slate-200'}`}>
+                      <div className={`${isPastMonth ? 'bg-slate-50/70' : 'bg-slate-50'} border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-3`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <h4 className="font-bold text-brand-900 capitalize text-sm md:text-base flex items-center gap-2"><CalendarIcon size={16} className="text-brand-500" /> {month.name}</h4>
+                          <div className="hidden md:flex items-center gap-1.5">
+                            {monthHolidays.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">🎌 {monthHolidays.length} feriado{monthHolidays.length > 1 ? 's' : ''}</span>}
+                            {monthEvents.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">📌 {monthEvents.length} registro{monthEvents.length > 1 ? 's' : ''}</span>}
+                            {monthBillings.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 whitespace-nowrap">💰 {monthBillings.length} faturamento{monthBillings.length > 1 ? 's' : ''}</span>}
+                          </div>
+                        </div>
+                        <div className="hidden md:flex items-center gap-2">
+                          <button type="button" onClick={() => scrollAdminMonthDays(mIdx, -1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver dias anteriores">
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button type="button" onClick={() => scrollAdminMonthDays(mIdx, 1)} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors border border-slate-200 shadow-sm" title="Ver próximos dias">
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <div ref={(el) => adminMonthScrollRefs.current[mIdx] = el} className="flex overflow-x-auto hide-scrollbar p-3 gap-2 md:gap-3">
+                        {month.days.map((day, dIdx) => {
+                          const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '');
+                          const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
+                          const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
+                          const dayBillings = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type === 'Faturamento');
+                          const hasHoliday = dayHolidays.length > 0;
+                          const hasEvent = dayEvents.length > 0;
+                          const hasBilling = dayBillings.length > 0;
+                          const hasAnyMarker = hasHoliday || hasEvent || hasBilling;
+
+                          return (
+                            <button
+                              key={dIdx}
+                              onClick={() => setAdminSelectedDate(day)}
+                              className={`group flex-shrink-0 relative flex flex-col items-center justify-start p-3 w-16 md:w-28 min-h-[84px] md:min-h-[126px] rounded-lg border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${hasHoliday ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300' : hasEvent ? 'border-brand-200 bg-brand-50 text-brand-800 hover:border-brand-300' : hasBilling ? 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300' : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-600'}`}
+                              title={hasHoliday ? dayHolidays.map(h => h.name).join(', ') : hasEvent ? dayEvents.map(e => e.title).join(', ') : hasBilling ? 'Faturamento programado' : 'Adicionar registro'}
+                            >
+                              <span className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-70">{dayName}</span>
+                              <span className="text-lg md:text-2xl font-black leading-none">{day.getDate()}</span>
+                              <div className="flex gap-1 md:hidden mt-1">
+                                {hasHoliday && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>}
+                                {hasEvent && <span className="w-1.5 h-1.5 bg-brand-500 rounded-full"></span>}
+                                {hasBilling && <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>}
+                              </div>
+                              {hasAnyMarker && (
+                                <div className="hidden md:flex flex-col gap-1 w-full mt-3">
+                                  {hasHoliday && <span className="text-[10px] font-bold px-1.5 py-1 rounded-md bg-white/80 text-emerald-700 border border-emerald-100 truncate">🎌 {dayHolidays[0].name}</span>}
+                                  {hasEvent && <span className="text-[10px] font-bold px-1.5 py-1 rounded-md bg-white/80 text-brand-700 border border-brand-100 truncate">📌 {dayEvents[0].type}</span>}
+                                  {hasBilling && <span className="text-[10px] font-bold px-1.5 py-1 rounded-md bg-white/80 text-amber-700 border border-amber-100 truncate">💰 Fatur.</span>}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                    <div ref={(el) => adminMonthScrollRefs.current[mIdx] = el} className="flex overflow-x-auto hide-scrollbar p-3 gap-2">
-                      {month.days.map((day, dIdx) => {
-                        const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '');
-                        const hasEvent = hrEvents.some(e => isSameDay(new Date(e.date + 'T12:00:00'), day));
-                        return (
-                          <button key={dIdx} onClick={() => setAdminSelectedDate(day)} className={`flex-shrink-0 flex flex-col items-center justify-center p-3 w-16 rounded-lg border transition-all ${hasEvent ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-600'}`}>
-                            <span className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-70">{dayName}</span>
-                            <span className="text-lg font-black">{day.getDate()}</span>
-                            {hasEvent && <span className="w-1 h-1 bg-brand-500 rounded-full mt-1"></span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
