@@ -70,7 +70,7 @@
     // --- CONFIGURAÇÃO DO SUPABASE ---
     const supabaseUrl = 'https://pwmgbaxywvyyfmlkygqr.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bWdiYXh5d3Z5eWZtbGt5Z3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNDI3NDAsImV4cCI6MjA5MjkxODc0MH0.kSYonDj0VBHjMZuVlGeVQjAuMmbEBMQfB4OsBcZOecg';
-    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
     // --- ÍCONES ---
     const CalendarIcon = ({ size=24, className="", strokeWidth=2 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>;
@@ -153,6 +153,30 @@
       const scrollContainerRef = useRef(null);
       const todayRef = useRef(null);
 
+      const ensureUserProfile = async (currentUser) => {
+        if (!currentUser?.id) return null;
+
+        const profilePayload = {
+          id: currentUser.id,
+          full_name: currentUser.user_metadata?.full_name || currentUser.email || 'Usuário',
+          department: 'Geral',
+          is_admin: false
+        };
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .upsert([profilePayload], { onConflict: 'id', ignoreDuplicates: true })
+          .select('*')
+          .maybeSingle();
+
+        if (error) {
+          console.error('Erro ao garantir perfil do usuário:', error);
+          return null;
+        }
+
+        return data;
+      };
+
       // --- BUSCA DE DADOS INICIAIS (SUPABASE) ---
       useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -171,8 +195,18 @@
       useEffect(() => {
         if (user) {
           const fetchProfile = async () => {
-            const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-            if (data) setProfile(data);
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+            if (error) {
+              console.error('Erro ao buscar perfil do usuário:', error);
+              return;
+            }
+
+            if (data) {
+              setProfile(data);
+            } else {
+              const createdProfile = await ensureUserProfile(user);
+              if (createdProfile) setProfile(createdProfile);
+            }
           };
           fetchProfile();
         } else {
@@ -181,10 +215,16 @@
       }, [user]);
 
       const fetchData = async () => {
-        const { data: eventsData } = await supabase.from('events').select('*');
+        const { data: eventsData, error: eventsError } = await supabase.from('events').select('*');
+        if (eventsError) {
+          console.error('Erro ao buscar eventos:', eventsError);
+        }
         if (eventsData) setHrEvents(eventsData);
-        
-        const { data: holidaysData } = await supabase.from('holidays').select('*');
+
+        const { data: holidaysData, error: holidaysError } = await supabase.from('holidays').select('*');
+        if (holidaysError) {
+          console.error('Erro ao buscar feriados:', holidaysError);
+        }
         if (holidaysData) setDbHolidays(holidaysData);
       };
 
@@ -204,24 +244,44 @@
       const handleAuth = async (e) => {
         e.preventDefault();
         setAuthLoading(true);
-        if (isSignUp) {
-          const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: 'Usuário' } } });
-          if (error) alert('Erro ao criar conta: ' + error.message);
-          else { 
-            alert('Conta criada com sucesso! Redirecionando...'); 
+
+        try {
+          if (isSignUp) {
+            const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: 'Usuário' } } });
+            if (error) {
+              alert('Erro ao criar conta: ' + error.message);
+              return;
+            }
+
+            if (data?.user) {
+              const createdProfile = await ensureUserProfile(data.user);
+              if (createdProfile) setProfile(createdProfile);
+            }
+
+            alert(data?.session ? 'Conta criada com sucesso! Redirecionando...' : 'Conta criada com sucesso! Se a confirmação por e-mail estiver ativa no Supabase, confirme o e-mail antes de fazer login.');
             setIsSignUp(false);
             setCurrentView('dashboard');
-          }
-        } else {
-          const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-          if (error) alert('Erro no login: Credenciais incorretas.');
-          else {
+            setAuthEmail('');
+            setAuthPassword('');
+          } else {
+            const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+            if (error) {
+              alert('Erro no login: ' + error.message);
+              return;
+            }
+
+            if (data?.user) {
+              const existingProfile = await ensureUserProfile(data.user);
+              if (existingProfile) setProfile(existingProfile);
+            }
+
             setCurrentView('dashboard');
             setAuthEmail('');
             setAuthPassword('');
           }
+        } finally {
+          setAuthLoading(false);
         }
-        setAuthLoading(false);
       };
 
       const handleLogout = async () => {
@@ -680,14 +740,14 @@
                         <button onClick={nextWeek} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronRight size={20} /></button>
                       </div>
                     </div>
-                    <div ref={scrollContainerRef} className="flex overflow-x-auto hide-scrollbar gap-2 md:gap-4 pb-2 md:grid md:grid-cols-7 snap-x snap-mandatory">
+                    <div ref={scrollContainerRef} className="flex overflow-x-auto hide-scrollbar gap-2 md:gap-4 pt-2 pb-3 md:grid md:grid-cols-7 snap-x snap-mandatory">
                       {currentWeekDays.map((day, index) => {
                         const isActualToday = isSameDay(day, todayDate); 
                         const hasHrEvent = hrEvents.some(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
                         const hasHoliday = allHolidays.some(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
                         return (
                           <div key={index} ref={isActualToday ? todayRef : null} onClick={() => openDayDetails(day)}
-                            className={`cursor-pointer snap-center flex-shrink-0 w-20 md:w-auto flex flex-col items-center justify-center py-4 px-2 rounded-xl border transition-all duration-300 relative ${isActualToday ? 'bg-gradient-to-b from-brand-500 to-brand-600 border-brand-600 text-white shadow-lg shadow-brand-500/30 transform scale-[1.05]' : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 hover:-translate-y-0.5'}`}
+                            className={`cursor-pointer snap-center flex-shrink-0 w-20 md:w-auto flex flex-col items-center justify-center py-4 px-2 rounded-xl border transition-all duration-300 relative ${isActualToday ? 'bg-gradient-to-b from-brand-500 to-brand-600 border-brand-600 text-white shadow-lg shadow-brand-500/30 transform scale-[1.05] z-10' : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 hover:-translate-y-0.5'}`}
                           >
                             <span className={`text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1.5 ${isActualToday ? 'text-brand-100' : 'text-slate-400'}`}>{new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '')}</span>
                             <span className={`text-2xl md:text-3xl font-black ${isActualToday ? 'text-white' : 'text-brand-900'}`}>{day.getDate()}</span>
