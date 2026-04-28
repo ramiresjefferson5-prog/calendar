@@ -77,7 +77,6 @@
       const [filter, setFilter] = useState('todos'); 
       
       const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
-      const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
 
       // Referências para o scroll do calendário no Mobile
       const scrollContainerRef = useRef(null);
@@ -99,29 +98,18 @@
       const goToToday = () => setViewDate(todayDate);
 
       // --- EFEITO DE SCROLL (MOBILE) ---
-      // Executa sempre que a semana visualizada muda
       useEffect(() => {
         if (todayRef.current && scrollContainerRef.current) {
           const container = scrollContainerRef.current;
           const element = todayRef.current;
-          
-          // Calcula a posição exata para deixar o dia ativo no centro do ecrã
           const scrollPosition = element.offsetLeft - (container.offsetWidth / 2) + (element.offsetWidth / 2);
-          
-          // Aplica o scroll suave
           container.scrollTo({ left: scrollPosition, behavior: 'smooth' });
         } else if (scrollContainerRef.current) {
-          // Se "hoje" não estiver na semana visualizada, rola para o início (Domingo)
           scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
         }
-      }, [viewDate]); // Dependência: reage quando muda a semana
+      }, [viewDate]); 
 
-      // --- LÓGICA DE DATAS ---
-      const formatFullDate = (date) => {
-        const formatted = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
-        return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-      };
-
+      // --- LÓGICA DE DATAS E PROGRESSO ---
       const yearProgress = useMemo(() => {
         const year = todayDate.getFullYear();
         const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
@@ -137,6 +125,13 @@
           elapsedWeeks, totalWeeks, weeksPercentage: ((elapsedWeeks / totalWeeks) * 100).toFixed(1),
         };
       }, [todayDate]);
+
+      // Calcula o número da semana para a data em visualização
+      const currentWeekNumber = useMemo(() => {
+        const startDate = new Date(viewDate.getFullYear(), 0, 1);
+        const days = Math.floor((viewDate - startDate) / (24 * 60 * 60 * 1000));
+        return Math.ceil((viewDate.getDay() + 1 + days) / 7);
+      }, [viewDate]);
 
       const isSameDay = (d1, d2) => {
         return d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
@@ -186,18 +181,6 @@
         );
       };
 
-      const ProgressBar = ({ label, current, total, percentage, colorClass }) => (
-        <div className="mb-6">
-          <div className="flex justify-between text-sm mb-2 font-medium text-slate-600">
-            <span>{label}</span>
-            <span className="font-bold text-slate-800">{current} <span className="text-slate-400 font-normal">/ {total}</span></span>
-          </div>
-          <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-1000 ease-out ${colorClass}`} style={{ width: `${percentage}%` }} />
-          </div>
-        </div>
-      );
-
       const FilterButton = ({ id, label, icon: Icon, activeColor }) => {
         const isActive = filter === id;
         return (
@@ -231,6 +214,44 @@
         </button>
       );
 
+      // Componente de Gráfico Donut SVG
+      const DonutChart = ({ percentage, color, label, subLabel }) => {
+        const radius = 35;
+        const circumference = 2 * Math.PI * radius;
+        const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+        return (
+          <div className="flex items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex-1">
+            <div className="relative w-20 h-20 flex-shrink-0">
+              {/* Círculo de fundo */}
+              <svg className="w-full h-full transform -rotate-90">
+                <circle cx="40" cy="40" r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="8" />
+                {/* Círculo de progresso */}
+                <circle 
+                  cx="40" 
+                  cy="40" 
+                  r={radius} 
+                  fill="transparent" 
+                  stroke={color} 
+                  strokeWidth="8" 
+                  strokeDasharray={circumference} 
+                  strokeDashoffset={strokeDashoffset} 
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-sm font-bold text-slate-800">{Math.round(percentage)}%</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800 mb-1">{label}</p>
+              <p className="text-xs font-medium text-slate-500">{subLabel}</p>
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div className="min-h-screen bg-[#F3F4F6] flex flex-col text-slate-800 font-sans selection:bg-blue-100">
           
@@ -254,11 +275,9 @@
           </header>
 
           {/* --- ÁREA PRINCIPAL --- */}
-          <main className="flex-1 overflow-x-hidden p-6 md:p-10 lg:p-14 pb-safe">
-            <div className="max-w-6xl mx-auto">
+          <main className="flex-1 overflow-x-hidden p-6 md:p-10 lg:p-14 pb-safe flex flex-col gap-8">
+            <div className="max-w-6xl mx-auto w-full">
               
-              {/* O título gigante redundante foi removido daqui! */}
-
               {/* GRID PRINCIPAL DE BLOCOS */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
@@ -273,7 +292,12 @@
                           <CalendarIcon size={22} className="text-blue-500" /> 
                           {new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(viewDate)}
                         </h3>
-                        <p className="text-sm font-medium text-slate-500 mt-1 ml-8">Semana em visualização</p>
+                        {/* Indicador de Semana Adicionado Aqui */}
+                        <div className="flex items-center gap-2 mt-2 ml-8">
+                           <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold border border-blue-100 uppercase tracking-wider">
+                            Semana {currentWeekNumber} de 52
+                           </span>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={prevWeek} className="p-2 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-blue-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronLeft size={20} /></button>
@@ -294,9 +318,7 @@
                         return (
                           <div 
                             key={index} 
-                            // Adicionamos a Referência apenas no "Hoje"
                             ref={isActualToday ? todayRef : null}
-                            // Trocamos snap-start por snap-center para que o swipe pare no meio
                             className={`
                               snap-center flex-shrink-0 w-24 md:w-auto flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200
                               ${isActualToday 
@@ -316,31 +338,48 @@
                     </div>
                   </section>
 
-                  {/* BLOCO 2: INFORMES DE RH */}
+                  {/* BLOCO 2: INFORMES DE RH MELHORADO */}
                   <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <Briefcase size={22} className="text-indigo-500" />
-                        Agenda e Informes do RH
+                        <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
+                           <Briefcase size={20} />
+                        </div>
+                        Mural do RH
                       </h3>
-                      <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-md text-xs font-bold border border-indigo-100">
-                        {MOCK_HR_EVENTS.length} Eventos
+                      <span className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-indigo-100">
+                        {MOCK_HR_EVENTS.length} Informes
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {MOCK_HR_EVENTS.map(event => (
-                        <div key={event.id} className="bg-slate-50 p-5 rounded-xl border border-slate-200 hover:border-indigo-300 transition-colors relative overflow-hidden group">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 group-hover:w-1.5 transition-all"></div>
-                          <div className="mb-3">
-                            <span className="text-[10px] font-bold px-2.5 py-1 bg-white text-indigo-700 rounded-md whitespace-nowrap border border-slate-200 shadow-sm uppercase tracking-wider inline-block mb-2">
-                              {event.department}
-                            </span>
-                            <h4 className="font-bold text-slate-900 leading-tight">{event.name}</h4>
+                    <div className="flex flex-col gap-4">
+                      {MOCK_HR_EVENTS.map((event, index) => (
+                        <div key={event.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-indigo-200 hover:shadow-md transition-all group">
+                          {/* Data em destaque à esquerda */}
+                          <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0 bg-white sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none border sm:border-0 border-slate-200 sm:w-16 flex-shrink-0">
+                             <span className="text-xs font-bold text-slate-400 uppercase sm:mb-1">
+                               {new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(new Date(event.date + 'T12:00:00')).replace('.','')}
+                             </span>
+                             <span className="text-xl sm:text-2xl font-black text-indigo-600">
+                               {new Date(event.date + 'T12:00:00').getDate()}
+                             </span>
                           </div>
-                          <div className="flex flex-col gap-1.5 text-xs text-slate-500 font-medium">
-                            <span className="flex items-center gap-2"><CalendarIcon size={14} className="text-slate-400"/> {new Date(event.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                            <span className="flex items-center gap-2"><Clock size={14} className="text-slate-400"/> {event.time}</span>
+                          
+                          {/* Detalhes do Evento */}
+                          <div className="flex-1 border-t sm:border-t-0 sm:border-l border-slate-200 pt-3 sm:pt-0 sm:pl-4">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <h4 className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">{event.name}</h4>
+                              <span className="text-[10px] font-bold px-2 py-1 bg-white text-indigo-600 rounded whitespace-nowrap border border-indigo-100 uppercase tracking-wider hidden sm:block">
+                                {event.department}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
+                              <span className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200"><Clock size={12} className="text-slate-400"/> {event.time}</span>
+                              {/* Badge de departamento no mobile aparece aqui */}
+                              <span className="text-[10px] font-bold px-2 py-1 bg-white text-indigo-600 rounded border border-indigo-100 uppercase tracking-wider sm:hidden">
+                                {event.department}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -349,7 +388,7 @@
 
                 </div>
 
-                {/* Coluna Direita: Cartões de Ação (Módulos do Sistema) */}
+                {/* Coluna Direita: Cartões de Ação */}
                 <div className="space-y-6">
                   <h3 className="text-lg font-bold text-slate-800 mb-2">Módulos do Sistema</h3>
                   
@@ -360,28 +399,50 @@
                     colorClass="bg-gradient-to-br from-emerald-500 to-emerald-600"
                     onClick={() => setIsHolidayModalOpen(true)}
                   />
-
-                  <ActionCard 
-                    title="Status do Ano" 
-                    description="Progresso decorrido em dias e semanas" 
-                    icon={Clock} 
-                    colorClass="bg-gradient-to-br from-indigo-500 to-indigo-600"
-                    onClick={() => setIsProgressModalOpen(true)}
-                  />
-
-                  {/* Cartão Informativo Estático */}
-                  <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 text-white shadow-lg">
-                    <div className="p-3 bg-slate-700 rounded-lg w-fit mb-4">
-                      <FileText size={20} className="text-slate-200" />
-                    </div>
-                    <h3 className="text-lg font-bold mb-2">Precisa de ajuda?</h3>
-                    <p className="text-sm text-slate-400 font-medium leading-relaxed">
-                      Este painel centraliza as datas cruciais da sua rotina corporativa. Utilize as setas no calendário para navegar pelas semanas.
-                    </p>
-                  </div>
                 </div>
 
               </div>
+              
+              {/* BLOCO INFERIOR: STATUS DO ANO (GRÁFICOS DE PIZZA/DONUT) */}
+              <div className="mt-8 pt-8 border-t border-slate-200">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Clock size={20} className="text-slate-500" />
+                  Progresso do Ano ({todayDate.getFullYear()})
+                </h3>
+                <div className="flex flex-col md:flex-row gap-4 lg:gap-8">
+                   <DonutChart 
+                     percentage={yearProgress.daysPercentage} 
+                     color="#3b82f6" // blue-500
+                     label="Dias Decorridos" 
+                     subLabel={`${yearProgress.elapsedDays} de ${yearProgress.totalDays} dias`}
+                   />
+                   <DonutChart 
+                     percentage={yearProgress.weeksPercentage} 
+                     color="#6366f1" // indigo-500
+                     label="Semanas Decorridas" 
+                     subLabel={`${yearProgress.elapsedWeeks} de ${yearProgress.totalWeeks} semanas`}
+                   />
+                </div>
+              </div>
+
+              {/* Cartão Informativo Estático Movido para o Fim */}
+              <div className="mt-8 bg-slate-800 p-6 md:p-8 rounded-xl border border-slate-700 text-white shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-10">
+                   <CalendarIcon size={160} />
+                </div>
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+                  <div className="p-4 bg-slate-700/50 rounded-xl w-fit flex-shrink-0 border border-slate-600">
+                    <FileText size={28} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Precisa de ajuda com o painel?</h3>
+                    <p className="text-sm md:text-base text-slate-400 font-medium leading-relaxed max-w-3xl">
+                      Este painel centraliza as datas cruciais da sua rotina corporativa. Utilize as setas no calendário no topo para navegar pelas semanas e acompanhe as métricas globais do ano nos gráficos acima.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </main>
 
@@ -433,21 +494,6 @@
             </div>
           </Modal>
 
-          {/* Modal: Progresso do Ano */}
-          <Modal isOpen={isProgressModalOpen} onClose={() => setIsProgressModalOpen(false)} title="Métricas do Ano" icon={Clock} colorClass="bg-indigo-500">
-            <div className="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
-              <ProgressBar label="Dias Decorridos" current={yearProgress.elapsedDays} total={yearProgress.totalDays} percentage={yearProgress.daysPercentage} colorClass="bg-blue-500" />
-              <ProgressBar label="Semanas Decorridas" current={yearProgress.elapsedWeeks} total={yearProgress.totalWeeks} percentage={yearProgress.weeksPercentage} colorClass="bg-indigo-500" />
-              <div className="mt-8 pt-6 border-t border-slate-100">
-                <h4 className="text-sm font-bold text-slate-800 mb-4">Resumo Detalhado:</h4>
-                <ul className="space-y-3 text-sm text-slate-600 font-medium">
-                  <li className="flex justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"><span>Data Atual:</span> <span className="text-slate-900 font-bold">{todayDate.toLocaleDateString('pt-BR')}</span></li>
-                  <li className="flex justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"><span>Dias Restantes:</span> <span className="text-slate-900 font-bold">{yearProgress.totalDays - yearProgress.elapsedDays} dias</span></li>
-                  <li className="flex justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"><span>Semanas Restantes:</span> <span className="text-slate-900 font-bold">{yearProgress.totalWeeks - yearProgress.elapsedWeeks} semanas</span></li>
-                </ul>
-              </div>
-            </div>
-          </Modal>
         </div>
       );
     }
