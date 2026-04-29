@@ -47,6 +47,8 @@
       location: '',
       targetRoles: '',
       hasPeriod: false,
+      hasDateRange: false,
+      endDate: '',
       originalDate: '',
       newDate: '',
       file: null
@@ -419,12 +421,15 @@
         setFormData(prev => {
           const usesTime = nextType === 'Evento' || nextType === 'Informe';
           const usesChangeDate = CHANGE_DATE_TYPES.includes(nextType);
+          const usesDateRange = !usesChangeDate;
 
           return {
             ...prev,
             type: nextType,
             classification: nextType === 'Informe' ? (prev.classification || INITIAL_FORM_DATA.classification) : INITIAL_FORM_DATA.classification,
             hasPeriod: nextType === 'Informe' ? prev.hasPeriod : false,
+            hasDateRange: usesDateRange ? prev.hasDateRange : false,
+            endDate: usesDateRange ? prev.endDate : INITIAL_FORM_DATA.endDate,
             startTime: usesTime ? prev.startTime : INITIAL_FORM_DATA.startTime,
             endTime: usesTime ? prev.endTime : INITIAL_FORM_DATA.endTime,
             location: nextType === 'Evento' ? prev.location : INITIAL_FORM_DATA.location,
@@ -445,7 +450,7 @@
           is_admin: false
         };
 
-        const { data, error } = await se
+        const { data, error } = await supabase
           .from('profiles')
           .upsert([profilePayload], { onConflict: 'id', ignoreDuplicates: true })
           .select('*')
@@ -459,7 +464,7 @@
         return data;
       };
 
-      // --- BUSCA DE DADOS INICIAIS (SE) ---
+      // --- BUSCA DE DADOS INICIAIS (SUPABASE) ---
       useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
           setUser(session?.user ?? null);
@@ -567,13 +572,22 @@
             }
 
             if (data?.user) {
-              const existingProfile = await ensureUserProfile(data.user);
-              if (existingProfile) setProfile(existingProfile);
+              setUser(data.user);
             }
 
             setCurrentView('dashboard');
             setAuthEmail('');
             setAuthPassword('');
+
+            if (data?.user) {
+              ensureUserProfile(data.user)
+                .then((existingProfile) => {
+                  if (existingProfile) setProfile(existingProfile);
+                })
+                .catch((profileError) => {
+                  console.error('Erro ao carregar perfil após login:', profileError);
+                });
+            }
           }
         } finally {
           setAuthLoading(false);
@@ -601,6 +615,8 @@
           location: event.location || '',
           targetRoles: event.target_roles || '',
           hasPeriod: !!event.has_period,
+          hasDateRange: !!event.end_date && event.end_date !== event.date,
+          endDate: event.end_date || '',
           originalDate: event.original_date || '',
           newDate: event.new_date || '',
           file: null
@@ -611,13 +627,20 @@
         setIsSubmitting(true);
 
         try {
-          const { error } = await supabase
+          const { data: deletedRows, error } = await supabase
             .from('events')
             .delete()
-            .eq('id', event.id);
+            .eq('id', event.id)
+            .select('id');
 
           if (error) {
             showFeedbackDialog('error', 'Erro ao excluir registro', error.message);
+            return;
+          }
+
+          if (!deletedRows || deletedRows.length === 0) {
+            showFeedbackDialog('error', 'Exclusão não confirmada', 'O Supabase não confirmou a remoção deste registro. Verifique se seu usuário possui permissão administrativa para excluir eventos.');
+            fetchData();
             return;
           }
 
@@ -680,6 +703,17 @@
           const dd = String(adminSelectedDate.getDate()).padStart(2, '0');
           const dateString = `${yyyy}-${mm}-${dd}`;
           const isChangeDateType = CHANGE_DATE_TYPES.includes(formData.type);
+          const rangeEndDate = !isChangeDateType && formData.hasDateRange ? formData.endDate : null;
+
+          if (!isChangeDateType && formData.hasDateRange && !rangeEndDate) {
+            showFeedbackDialog('error', 'Data final obrigatória', 'Informe a data final para registros que duram mais de um dia.');
+            return;
+          }
+
+          if (rangeEndDate && rangeEndDate < dateString) {
+            showFeedbackDialog('error', 'Data final inválida', 'A data final do registro não pode ser anterior à data inicial selecionada.');
+            return;
+          }
 
           const eventData = {
             date: dateString,
@@ -696,6 +730,7 @@
             target_roles: formData.type === 'Evento' ? formData.targetRoles : null,
             classification: formData.type === 'Informe' ? formData.classification : null,
             has_period: formData.type === 'Informe' ? formData.hasPeriod : false,
+            end_date: rangeEndDate,
             original_date: isChangeDateType ? formData.originalDate : null,
             new_date: isChangeDateType ? formData.newDate : null,
           };
@@ -764,6 +799,38 @@
 
       // --- LÓGICA DE DATAS E PROGRESSO ---
       const isSameDay = (d1, d2) => d1 && d2 && d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+      const parseLocalDate = (dateString) => dateString ? new Date(`${dateString}T12:00:00`) : null;
+      const formatDateKey = (date) => {
+        if (!date) return '';
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      };
+      const getDayTimestamp = (date) => date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() : null;
+      const isDateWithinRange = (date, startDate, endDate) => {
+        const target = getDayTimestamp(date);
+        const start = getDayTimestamp(startDate);
+        const end = getDayTimestamp(endDate || startDate);
+
+        if (target === null || start === null || end === null) return false;
+
+        return target >= Math.min(start, end) && target <= Math.max(start, end);
+      };
+      const getEventStartDate = (event) => parseLocalDate(event?.date);
+      const getEventEndDate = (event) => parseLocalDate(event?.end_date || event?.date);
+      const isEventOnDate = (event, date) => isDateWithinRange(date, getEventStartDate(event), getEventEndDate(event));
+      const isEventInMonth = (event, monthDate) => {
+        const startDate = getEventStartDate(event);
+        const endDate = getEventEndDate(event);
+        if (!startDate || !endDate || !monthDate) return false;
+
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+
+        return getDayTimestamp(startDate) <= getDayTimestamp(monthEnd) && getDayTimestamp(endDate) >= getDayTimestamp(monthStart);
+      };
+      const eventHasDateRange = (event) => !!event?.end_date && event.end_date !== event.date;
       const formatFullDate = (date) => {
         if (!date) return '';
         const formatted = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
@@ -890,6 +957,13 @@
 
       const filteredHolidays = useMemo(() => filter === 'todos' ? allHolidays : allHolidays.filter(h => h.type === filter), [filter, allHolidays]);
 
+      const visibleHrEvents = useMemo(() => {
+        return hrEvents.filter(event =>
+          event.type !== 'Faturamento' &&
+          currentWeekDays.some(day => isEventOnDate(event, day))
+        );
+      }, [hrEvents, currentWeekDays]);
+
       // --- LÓGICA: RESUMO DA SEMANA (DIAS ÚTEIS E FERIADOS) ---
       const currentWeekSummary = useMemo(() => {
         const holidaysThisWeek = allHolidays.filter(h =>
@@ -913,7 +987,7 @@
         if (!adminSelectedDate) return [];
 
         return hrEvents
-          .filter(event => isSameDay(new Date(event.date + 'T12:00:00'), adminSelectedDate))
+          .filter(event => isEventOnDate(event, adminSelectedDate))
           .sort((a, b) => {
             const timeA = a.start_time || '99:99';
             const timeB = b.start_time || '99:99';
@@ -939,6 +1013,13 @@
         };
 
         const fileUrl = getAttachmentUrl();
+        const eventStartDate = getEventStartDate(event);
+        const eventEndDate = getEventEndDate(event);
+        const eventDateLabel = eventStartDate
+          ? eventHasDateRange(event)
+            ? `${eventStartDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} até ${eventEndDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`
+            : eventStartDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+          : '';
 
         return (
           <div className={`bg-white p-4 md:p-6 rounded-xl border ${borderClass} hover:shadow-md transition-all relative overflow-hidden group`}>
@@ -970,11 +1051,11 @@
             </div>
             
             <div className="flex flex-col gap-2.5 text-sm text-slate-600 font-medium pl-2 mt-4">
-              {(event.type === 'Evento' || (event.type === 'Informe' && event.has_period)) && (
+              {(event.type === 'Evento' || (event.type === 'Informe' && event.has_period) || eventHasDateRange(event)) && (
                 <div className="flex flex-wrap gap-3">
                   <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 text-xs">
                     <CalendarIcon size={14} className="text-slate-400"/> 
-                    {new Date(event.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    {eventDateLabel}
                   </span>
                   {event.start_time && (
                     <span className="flex items-center gap-1.5 bg-brand-50 px-2 py-1 rounded-md border border-brand-100 text-xs text-brand-700 font-bold">
@@ -1086,8 +1167,13 @@
               <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-brand-400 opacity-10 rounded-full blur-3xl"></div>
               
               <div className="relative z-10 flex flex-col items-center justify-center h-full p-8 md:p-12 text-center">
-                <button onClick={() => setCurrentView('dashboard')} className="absolute top-6 left-6 md:top-8 md:left-8 text-white/70 hover:text-white flex items-center gap-2 text-sm font-semibold transition-colors bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/10 hover:bg-white/20">
-                  <ChevronLeft size={16} /> Voltar ao Calendário
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className="fixed md:absolute top-3 left-3 md:top-8 md:left-8 z-[120] md:z-20 w-10 h-10 md:w-auto md:h-auto text-white/85 hover:text-white flex items-center justify-center md:justify-start gap-2 text-sm font-semibold transition-colors bg-white/10 md:px-4 md:py-2 rounded-full md:rounded-lg backdrop-blur-sm border border-white/10 hover:bg-white/20 shadow-lg md:shadow-none"
+                  title="Voltar ao Calendário"
+                >
+                  <ChevronLeft size={20} className="md:w-4 md:h-4" />
+                  <span className="hidden md:inline">Voltar ao Calendário</span>
                 </button>
                 
                 <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl mb-8 transform hover:scale-105 transition-transform duration-500">
@@ -1213,7 +1299,7 @@
                     <div ref={scrollContainerRef} className="flex overflow-x-auto hide-scrollbar gap-2 md:gap-4 pt-2 pb-3 md:grid md:grid-cols-7 snap-x snap-mandatory">
                       {currentWeekDays.map((day, index) => {
                         const isActualToday = isSameDay(day, todayDate); 
-                        const hasHrEvent = hrEvents.some(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
+                        const hasHrEvent = hrEvents.some(e => isEventOnDate(e, day) && e.type !== 'Faturamento');
                         const hasHoliday = allHolidays.some(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
                         return (
                           <div key={index} ref={isActualToday ? todayRef : null} onClick={() => openDayDetails(day)}
@@ -1234,13 +1320,13 @@
                   {/* BLOCO 2: MURAL DE RH */}
                   <section className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
                     <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold text-brand-900 flex items-center gap-2"><div className="p-1.5 bg-brand-100 text-brand-600 rounded-lg"><Briefcase size={20} /></div>Quadro de Avisos</h3>
-                      <span className="bg-brand-50 text-brand-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand-100">{hrEvents.filter(e => e.type !== 'Faturamento').length} Lançamentos</span>
+                      <h3 className="text-xl font-bold text-brand-900 flex items-center gap-2"><div className="p-1.5 bg-brand-100 text-brand-600 rounded-lg"><Briefcase size={20} /></div>Mural do RH</h3>
+                      <span className="bg-brand-50 text-brand-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand-100">{visibleHrEvents.length} Lançamentos</span>
                     </div>
                     <div className="flex flex-col gap-4">
-                      {hrEvents.filter(e => e.type !== 'Faturamento').map(event => <EventCard key={event.id} event={event} />)}
-                      {hrEvents.filter(e => e.type !== 'Faturamento').length === 0 && (
-                        <div className="text-center p-6 text-slate-400 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Nenhum evento registrado no banco de dados.</div>
+                      {visibleHrEvents.map(event => <EventCard key={event.id} event={event} />)}
+                      {visibleHrEvents.length === 0 && (
+                        <div className="text-center p-6 text-slate-400 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Nenhum evento registrado para esta semana.</div>
                       )}
                     </div>
                   </section>
@@ -1374,9 +1460,9 @@
           {/* Modal Dia Específico */}
           <Modal isOpen={isDayModalOpen} onClose={() => setIsDayModalOpen(false)} title={formatFullDate(selectedDay)} icon={CalendarIcon} colorClass="bg-brand-500">
             {selectedDay && (() => {
-               const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), selectedDay) && e.type !== 'Faturamento');
+               const dayEvents = hrEvents.filter(e => isEventOnDate(e, selectedDay) && e.type !== 'Faturamento');
                const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), selectedDay));
-               const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), selectedDay) && b.type === 'Faturamento');
+               const dayBillings = hrEvents.filter(b => isEventOnDate(b, selectedDay) && b.type === 'Faturamento');
                const hasNothing = dayEvents.length === 0 && dayHolidays.length === 0 && dayBillings.length === 0;
 
                return (
@@ -1453,9 +1539,9 @@
                   const monthKey = `${monthDate.getFullYear()}-${monthDate.getMonth()}`;
                   const isExpanded = expandedMonthKey === monthKey;
                   const isCurrentMonth = monthDate.getMonth() === todayDate.getMonth() && monthDate.getFullYear() === todayDate.getFullYear();
-                  const monthEvents = hrEvents.filter(e => e.type !== 'Faturamento' && e.date && new Date(e.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(e.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
+                  const monthEvents = hrEvents.filter(e => e.type !== 'Faturamento' && isEventInMonth(e, monthDate)).length;
                   const monthHolidays = allHolidays.filter(h => h.date && new Date(h.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(h.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
-                  const monthBillings = hrEvents.filter(e => e.type === 'Faturamento' && e.date && new Date(e.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(e.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
+                  const monthBillings = hrEvents.filter(e => e.type === 'Faturamento' && isEventInMonth(e, monthDate)).length;
 
                   return (
                     <div key={monthKey} className={`bg-white rounded-2xl border overflow-hidden transition-all duration-300 ${isCurrentMonth ? 'border-brand-200 ring-2 ring-brand-100' : 'border-slate-200'} ${isExpanded ? 'shadow-md' : 'shadow-sm hover:shadow-md'}`}>
@@ -1499,9 +1585,9 @@
                                   if (!day) return <div key={`empty-${wIdx}-${dIdx}`} className="min-h-[62px] md:min-h-[82px] border-r border-slate-100 last:border-r-0 bg-slate-50/50"></div>;
 
                                   const isActualToday = isSameDay(day, todayDate);
-                                  const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
+                                  const dayEvents = hrEvents.filter(e => isEventOnDate(e, day) && e.type !== 'Faturamento');
                                   const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
-                                  const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), day) && b.type === 'Faturamento');
+                                  const dayBillings = hrEvents.filter(b => isEventOnDate(b, day) && b.type === 'Faturamento');
 
                                   return (
                                     <div key={dIdx} onClick={() => { setIsMonthModalOpen(false); openDayDetails(day); }} className={`min-h-[62px] md:min-h-[82px] p-1.5 md:p-2 border-r border-slate-100 last:border-r-0 flex flex-col transition-all cursor-pointer relative group ${isActualToday ? 'bg-brand-50/60' : 'hover:bg-slate-50'} ${dayHolidays.length > 0 ? 'ring-1 ring-inset ring-emerald-100' : ''}`}>
@@ -1549,8 +1635,8 @@
                   const isPastMonth = mIdx < todayDate.getMonth();
                   const isCurrentMonth = mIdx === todayDate.getMonth();
                   const monthHolidays = allHolidays.filter(h => month.days.some(day => isSameDay(new Date(h.date + 'T12:00:00'), day)));
-                  const monthEvents = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type !== 'Faturamento');
-                  const monthBillings = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type === 'Faturamento');
+                  const monthEvents = hrEvents.filter(e => month.days.some(day => isEventOnDate(e, day)) && e.type !== 'Faturamento');
+                  const monthBillings = hrEvents.filter(e => month.days.some(day => isEventOnDate(e, day)) && e.type === 'Faturamento');
 
                   return (
                     <div ref={isCurrentMonth ? currentAdminMonthRef : null} key={mIdx} className={`rounded-xl border shadow-sm overflow-hidden transition-all scroll-mt-6 ${isPastMonth ? 'border-red-100 bg-red-50/70 opacity-80' : isCurrentMonth ? 'bg-white border-brand-200 ring-2 ring-brand-100 shadow-md' : 'bg-white border-slate-200'}`}>
@@ -1578,8 +1664,8 @@
                         {month.days.map((day, dIdx) => {
                           const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '');
                           const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
-                          const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
-                          const dayBillings = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type === 'Faturamento');
+                          const dayEvents = hrEvents.filter(e => isEventOnDate(e, day) && e.type !== 'Faturamento');
+                          const dayBillings = hrEvents.filter(e => isEventOnDate(e, day) && e.type === 'Faturamento');
                           const hasHoliday = dayHolidays.length > 0;
                           const hasEvent = dayEvents.length > 0;
                           const hasBilling = dayBillings.length > 0;
@@ -1711,6 +1797,38 @@
                       <input type="text" required placeholder="Ex: Treinamento de Integração" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-brand-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none font-medium" />
                     </div>
 
+                    {!CHANGE_DATE_TYPES.includes(formData.type) && (
+                      <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <label htmlFor="hasDateRange" className="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700">
+                            <input
+                              type="checkbox"
+                              id="hasDateRange"
+                              checked={formData.hasDateRange}
+                              onChange={(e) => setFormData({...formData, hasDateRange: e.target.checked, endDate: e.target.checked ? formData.endDate : ''})}
+                              className="w-4 h-4 text-brand-600 rounded border-slate-300"
+                            />
+                            Este registro dura mais de um dia?
+                          </label>
+
+                          {formData.hasDateRange && (
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Data final</label>
+                              <input
+                                type="date"
+                                required
+                                min={adminSelectedDate ? formatDateKey(adminSelectedDate) : ''}
+                                value={formData.endDate}
+                                onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+                                className="bg-white border border-slate-200 text-brand-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2 outline-none font-medium"
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-medium mt-2">Quando ativado, o registro aparece automaticamente em todos os dias entre a data inicial selecionada e a data final.</p>
+                      </div>
+                    )}
+
                     {formData.type === 'Evento' && (
                       <>
                         <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Hora de Início</label><input type="time" required value={formData.startTime} onChange={(e) => setFormData({...formData, startTime: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-brand-900 text-sm rounded-lg p-2.5 outline-none" /></div>
@@ -1798,7 +1916,7 @@
                       Cancelar
                     </button>
                     <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50">
-                      {isSubmitting ? 'A processar...' : <>{editingEventId ? <Pencil size={16} /> : <PlusCircle size={16} />} {editingEventId ? 'Atualizar Registro' : 'Salvar Registro'}</>}
+                      {isSubmitting ? 'A processar...' : <>{editingEventId ? <Pencil size={16} /> : <PlusCircle size={16} />} {editingEventId ? 'Atualizar Registro' : 'Salvar Registro no Supabase'}</>}
                     </button>
                   </div>
                 </form>
