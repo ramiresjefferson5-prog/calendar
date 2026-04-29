@@ -917,6 +917,12 @@
                   <h1 className="text-sm md:text-base font-bold tracking-tight text-brand-900 leading-tight">Calendário<br/>Corporativo</h1>
                 </div>
               </div>
+
+              {user && (
+                <button onClick={handleLogout} className="p-1.5 md:p-2.5 rounded-lg border transition-colors bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 flex items-center gap-2" title="Sair da Conta Admin">
+                  <LogOut size={18} /> <span className="hidden md:inline text-sm font-bold">Sair</span>
+                </button>
+              )}
             </div>
           </header>
 
