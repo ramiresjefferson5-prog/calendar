@@ -92,6 +92,7 @@
     const Users = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
     const LogOut = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
     const CheckCircle = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+    const AlertTriangle = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>;
     const Home = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/><path d="M21 9v13H3V9"/></svg>;
     const Pencil = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>;
     const Trash2 = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>;
@@ -157,6 +158,89 @@
               <button onClick={onClose} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200 flex-shrink-0 ml-2"><X size={20} /></button>
             </div>
             <div className="p-4 md:p-8 overflow-y-auto flex-1 hide-scrollbar bg-slate-50/50">{children}</div>
+          </div>
+        </div>
+      );
+    };
+
+    const InteractionModal = ({ dialog, onClose, onConfirm, isLoading = false }) => {
+      if (!dialog?.isOpen) return null;
+
+      const isConfirm = dialog.variant === 'confirm';
+      const variantStyles = {
+        success: {
+          iconWrap: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+          button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+          Icon: CheckCircle
+        },
+        error: {
+          iconWrap: 'bg-red-50 text-red-600 border-red-100',
+          button: 'bg-red-600 hover:bg-red-700 text-white',
+          Icon: X
+        },
+        warning: {
+          iconWrap: 'bg-amber-50 text-amber-600 border-amber-100',
+          button: 'bg-red-600 hover:bg-red-700 text-white',
+          Icon: AlertTriangle
+        },
+        info: {
+          iconWrap: 'bg-brand-50 text-brand-600 border-brand-100',
+          button: 'bg-brand-600 hover:bg-brand-700 text-white',
+          Icon: FileText
+        },
+        confirm: {
+          iconWrap: 'bg-amber-50 text-amber-600 border-amber-100',
+          button: 'bg-red-600 hover:bg-red-700 text-white',
+          Icon: AlertTriangle
+        }
+      };
+
+      const style = variantStyles[dialog.variant] || variantStyles.info;
+      const DialogIcon = dialog.icon || style.Icon;
+
+      return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm transition-opacity" onClick={isLoading ? undefined : onClose}></div>
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden modal-animate">
+            <div className="p-5 md:p-6">
+              <div className="flex items-start gap-4">
+                <div className={`w-12 h-12 rounded-xl border flex items-center justify-center flex-shrink-0 ${style.iconWrap}`}>
+                  <DialogIcon size={24} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg md:text-xl font-black text-brand-900 leading-tight">
+                    {dialog.title}
+                  </h3>
+                  {dialog.message && (
+                    <p className="text-sm text-slate-500 font-medium leading-relaxed mt-2 whitespace-pre-line">
+                      {dialog.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 md:px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              {isConfirm && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isLoading}
+                  className="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-white border border-transparent hover:border-slate-200 transition-colors disabled:opacity-60"
+                >
+                  {dialog.cancelText || 'Cancelar'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={isConfirm ? onConfirm : onClose}
+                disabled={isLoading}
+                className={`px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2 ${isConfirm ? variantStyles.confirm.button : style.button}`}
+              >
+                {isLoading && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>}
+                {isLoading ? 'Processando...' : (dialog.confirmText || 'Entendi')}
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -284,6 +368,8 @@
       const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
       const [selectedDay, setSelectedDay] = useState(null);
       const [expandedMonthKey, setExpandedMonthKey] = useState(null);
+      const [feedbackDialog, setFeedbackDialog] = useState(null);
+      const [confirmDialog, setConfirmDialog] = useState(null);
 
       // Estado do Formulário de Inserção
       const [adminSelectedDate, setAdminSelectedDate] = useState(null);
@@ -296,7 +382,7 @@
       const adminMonthScrollRefs = useRef([]);
       const currentAdminMonthRef = useRef(null);
 
-      const anyModalOpen = isHolidayModalOpen || isMonthModalOpen || isDayModalOpen || isAdminModalOpen;
+      const anyModalOpen = isHolidayModalOpen || isMonthModalOpen || isDayModalOpen || isAdminModalOpen || !!feedbackDialog || !!confirmDialog;
 
       const clearAdminFormFields = () => {
         setEditingEventId(null);
@@ -311,6 +397,40 @@
       const closeAdminModal = () => {
         setIsAdminModalOpen(false);
         resetAdminForm();
+      };
+
+      const showFeedbackDialog = (variant, title, message) => {
+        setFeedbackDialog({ isOpen: true, variant, title, message });
+      };
+
+      const closeFeedbackDialog = () => {
+        setFeedbackDialog(null);
+      };
+
+      const showConfirmDialog = ({ title, message, confirmText = 'Confirmar', cancelText = 'Cancelar', onConfirm }) => {
+        setConfirmDialog({
+          isOpen: true,
+          variant: 'confirm',
+          title,
+          message,
+          confirmText,
+          cancelText,
+          onConfirm
+        });
+      };
+
+      const closeConfirmDialog = () => {
+        if (!isSubmitting) setConfirmDialog(null);
+      };
+
+      const handleConfirmDialogAction = async () => {
+        if (!confirmDialog?.onConfirm) {
+          setConfirmDialog(null);
+          return;
+        }
+
+        await confirmDialog.onConfirm();
+        setConfirmDialog(null);
       };
 
       const handleAdminDaySelect = (day) => {
@@ -468,7 +588,7 @@
           if (isSignUp) {
             const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: 'Usuário' } } });
             if (error) {
-              alert('Erro ao criar conta: ' + error.message);
+              showFeedbackDialog('error', 'Erro ao criar conta', error.message);
               return;
             }
 
@@ -477,7 +597,7 @@
               if (createdProfile) setProfile(createdProfile);
             }
 
-            alert(data?.session ? 'Conta criada com sucesso! Redirecionando...' : 'Conta criada com sucesso! Se a confirmação por e-mail estiver ativa no Supabase, confirme o e-mail antes de fazer login.');
+            showFeedbackDialog('success', 'Conta criada com sucesso', data?.session ? 'Redirecionando para o calendário.' : 'Se a confirmação por e-mail estiver ativa no Supabase, confirme o e-mail antes de fazer login.');
             setIsSignUp(false);
             setCurrentView('dashboard');
             setAuthEmail('');
@@ -485,7 +605,7 @@
           } else {
             const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
             if (error) {
-              alert('Erro no login: ' + error.message);
+              showFeedbackDialog('error', 'Erro no login', error.message);
               return;
             }
 
@@ -530,12 +650,7 @@
         });
       };
 
-      const handleDeleteAdminEvent = async (event) => {
-        if (!event?.id || isSubmitting) return;
-
-        const confirmDelete = window.confirm(`Tem certeza que deseja excluir o registro "${event.title}"? Esta ação não pode ser desfeita.`);
-        if (!confirmDelete) return;
-
+      const executeDeleteAdminEvent = async (event) => {
         setIsSubmitting(true);
 
         try {
@@ -545,7 +660,7 @@
             .eq('id', event.id);
 
           if (error) {
-            alert('Erro ao excluir registro: ' + error.message);
+            showFeedbackDialog('error', 'Erro ao excluir registro', error.message);
             return;
           }
 
@@ -553,14 +668,26 @@
             clearAdminFormFields();
           }
 
-          alert('Registro excluído com sucesso!');
+          showFeedbackDialog('success', 'Registro excluído', 'O registro foi excluído com sucesso.');
           fetchData();
         } catch (error) {
           console.error('Erro inesperado ao excluir registro:', error);
-          alert('Erro inesperado ao excluir registro. Verifique o console para mais detalhes.');
+          showFeedbackDialog('error', 'Erro inesperado', 'Não foi possível excluir o registro. Verifique o console para mais detalhes.');
         } finally {
           setIsSubmitting(false);
         }
+      };
+
+      const handleDeleteAdminEvent = (event) => {
+        if (!event?.id || isSubmitting) return;
+
+        showConfirmDialog({
+          title: 'Excluir registro?',
+          message: `O registro "${event.title}" será removido deste dia. Esta ação não pode ser desfeita.`,
+          confirmText: 'Excluir registro',
+          cancelText: 'Cancelar',
+          onConfirm: () => executeDeleteAdminEvent(event)
+        });
       };
 
       // --- LÓGICA DE ADMINISTRAÇÃO (SALVAR NO SUPABASE) ---
@@ -583,7 +710,7 @@
               .upload(`anexos/${fileName}`, formData.file);
 
             if (uploadError) {
-              alert('Erro ao fazer upload do arquivo: ' + uploadError.message);
+              showFeedbackDialog('error', 'Erro no upload do anexo', uploadError.message);
               return;
             }
 
@@ -621,16 +748,16 @@
             : await supabase.from('events').insert([eventData]);
 
           if (error) {
-            alert(`Erro ao ${editingEventId ? 'atualizar' : 'salvar'} no banco de dados: ` + error.message);
+            showFeedbackDialog('error', `Erro ao ${editingEventId ? 'atualizar' : 'salvar'} registro`, error.message);
             return;
           }
 
-          alert(editingEventId ? 'Registro atualizado com sucesso!' : 'Registro adicionado com sucesso!');
+          showFeedbackDialog('success', editingEventId ? 'Registro atualizado' : 'Registro adicionado', editingEventId ? 'O registro foi atualizado com sucesso.' : 'O novo registro foi salvo com sucesso.');
           clearAdminFormFields();
           fetchData();
         } catch (error) {
           console.error('Erro inesperado ao salvar registro:', error);
-          alert('Erro inesperado ao salvar registro. Verifique o console para mais detalhes.');
+          showFeedbackDialog('error', 'Erro inesperado', 'Não foi possível salvar o registro. Verifique o console para mais detalhes.');
         } finally {
           setIsSubmitting(false);
         }
@@ -929,12 +1056,28 @@
         );
       };
 
+      const renderInteractionDialogs = () => (
+        <>
+          <InteractionModal
+            dialog={feedbackDialog}
+            onClose={closeFeedbackDialog}
+          />
+          <InteractionModal
+            dialog={confirmDialog}
+            onClose={closeConfirmDialog}
+            onConfirm={handleConfirmDialogAction}
+            isLoading={isSubmitting}
+          />
+        </>
+      );
+
       // ==========================================
       // VIEW 1: TELA DE LOGIN (PÁGINA COMPLETA)
       // ==========================================
       if (currentView === 'login') {
         return (
-          <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans selection:bg-brand-100 page-enter">
+          <>
+            <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans selection:bg-brand-100 page-enter">
             
             {/* Lado Esquerdo - Branding / Logo da Marca */}
             <div className="w-full md:w-5/12 lg:w-1/2 bg-brand-900 flex flex-col relative overflow-hidden shrink-0 min-h-[30vh] md:min-h-screen">
@@ -1013,7 +1156,8 @@
                 </div>
               </div>
             </div>
-          </div>
+            {renderInteractionDialogs()}
+          </>
         );
       }
 
@@ -1658,6 +1802,8 @@
               </div>
             )}
           </Modal>
+
+          {renderInteractionDialogs()}
 
         </div>
       );
