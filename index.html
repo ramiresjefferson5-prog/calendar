@@ -92,6 +92,7 @@
     const Users = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
     const LogOut = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
     const CheckCircle = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+    const Home = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/><path d="M21 9v13H3V9"/></svg>;
 
     const SECTORS = ['Administrativo', 'Comercial', 'RH', 'Compras', 'Diretoria', 'Engenharia e PD&I', 'Produção', 'Financeiro', 'Almoxarifado'];
     const LOGO_URL = 'https://res.cloudinary.com/dbnyxxhe3/image/upload/v1772102800/02_Prancheta_1_ksm9oj.png';
@@ -154,6 +155,99 @@
             </div>
             <div className="p-4 md:p-8 overflow-y-auto flex-1 hide-scrollbar bg-slate-50/50">{children}</div>
           </div>
+        </div>
+      );
+    };
+
+
+    // --- BOTÃO FLUTUANTE GLOBAL ---
+    const FloatingActionButton = ({ onAdminAccess }) => {
+      const [isFabOpen, setIsFabOpen] = useState(false);
+      const clickTimerRef = useRef(null);
+      const homeUrl = 'https://maishidrosolucoes-cmyk.github.io/redirecionadormais/';
+
+      const closeFab = () => {
+        setIsFabOpen(false);
+      };
+
+      const handleFabClick = (e) => {
+        e.preventDefault();
+
+        if (clickTimerRef.current === null) {
+          clickTimerRef.current = setTimeout(() => {
+            setIsFabOpen(prev => !prev);
+            clickTimerRef.current = null;
+          }, 250);
+        } else {
+          clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null;
+          window.location.href = homeUrl;
+        }
+      };
+
+      const handleAdminAccess = () => {
+        closeFab();
+        onAdminAccess();
+      };
+
+      const handleGoHome = () => {
+        window.location.href = homeUrl;
+      };
+
+      useEffect(() => {
+        const handleOutsideClick = (e) => {
+          const fabRoot = document.getElementById('floating-action-button-root');
+          if (isFabOpen && fabRoot && !fabRoot.contains(e.target)) {
+            closeFab();
+          }
+        };
+
+        document.addEventListener('click', handleOutsideClick);
+
+        return () => {
+          document.removeEventListener('click', handleOutsideClick);
+          if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current);
+          }
+        };
+      }, [isFabOpen]);
+
+      return (
+        <div id="floating-action-button-root" className="fixed bottom-6 right-6 z-[45] flex flex-col items-end font-sans">
+          <div className={`flex flex-col gap-3 mb-4 items-end transition-all duration-300 transform ${isFabOpen ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+            <button type="button" onClick={handleAdminAccess} className="flex items-center gap-3 hover:scale-105 transition-transform group">
+              <span className="bg-white text-slate-700 border border-slate-100 text-xs md:text-sm font-semibold px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap group-hover:text-brand-700">
+                Entrar na conta ADM
+              </span>
+              <div className="w-12 h-12 rounded-full bg-white text-brand-600 shadow-md flex items-center justify-center border border-slate-100 group-hover:bg-brand-50 transition-colors">
+                <Lock size={20} />
+              </div>
+            </button>
+
+            <button type="button" onClick={handleGoHome} className="flex items-center gap-3 hover:scale-105 transition-transform group">
+              <span className="bg-slate-800 text-white text-xs md:text-sm font-semibold px-3 py-1.5 rounded-lg shadow-md whitespace-nowrap">
+                Voltar para página inicial
+              </span>
+              <div className="w-12 h-12 rounded-full bg-slate-800 text-white shadow-md flex items-center justify-center group-hover:bg-brand-700 transition-colors">
+                <Home size={20} />
+              </div>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleFabClick}
+            className={`w-14 h-14 md:w-16 md:h-16 rounded-full shadow-xl transition-all duration-300 flex items-center justify-center border outline-none hover:scale-105 active:scale-95 ${
+              isFabOpen
+                ? 'bg-brand-600 text-white border-brand-600 opacity-100'
+                : 'bg-white text-brand-600 border-slate-200 opacity-70 hover:opacity-100'
+            }`}
+            title="1 clique para abrir o menu | 2 cliques para voltar ao início"
+          >
+            <div className={`transition-transform duration-300 ${isFabOpen ? 'rotate-90' : 'rotate-0'}`}>
+              {isFabOpen ? <X size={28} /> : <PlusCircle size={30} />}
+            </div>
+          </button>
         </div>
       );
     };
@@ -976,6 +1070,15 @@
               </div>
             </div>
           </main>
+
+
+          <FloatingActionButton onAdminAccess={() => {
+            if (user && profile?.is_admin) {
+              setIsAdminModalOpen(true);
+            } else {
+              setCurrentView('login');
+            }
+          }} />
 
           {/* ================= MODAIS UI (Paineis secundários) ================= */}
 
