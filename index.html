@@ -96,6 +96,24 @@
     const SECTORS = ['Administrativo', 'Comercial', 'RH', 'Compras', 'Diretoria', 'Engenharia e PD&I', 'Produção', 'Financeiro', 'Almoxarifado'];
     const LOGO_URL = 'https://res.cloudinary.com/dbnyxxhe3/image/upload/v1772102800/02_Prancheta_1_ksm9oj.png';
 
+    const INITIAL_FORM_DATA = {
+      type: 'Evento',
+      department: 'RH',
+      classification: 'Geral',
+      title: '',
+      description: '',
+      startTime: '09:00',
+      endTime: '10:00',
+      location: '',
+      targetRoles: '',
+      hasPeriod: false,
+      originalDate: '',
+      newDate: '',
+      file: null
+    };
+
+    const CHANGE_DATE_TYPES = ['Alteração de Folga', 'Troca de Feriado'];
+
     // --- FERIADOS PADRÃO (Sempre visíveis como base) ---
     const MOCK_HOLIDAYS = [
       { id: 'm1', date: '2026-01-01', name: 'Ano Novo', type: 'nacional' },
@@ -144,17 +162,44 @@
       // Estado do Formulário de Inserção
       const [adminSelectedDate, setAdminSelectedDate] = useState(null);
       const [isSubmitting, setIsSubmitting] = useState(false);
-      const [formData, setFormData] = useState({
-        type: 'Evento', department: 'RH', classification: 'Geral',
-        title: '', description: '', startTime: '09:00', endTime: '10:00',
-        location: '', targetRoles: '', hasPeriod: false, originalDate: '', newDate: '',
-        file: null 
-      });
+      const [formData, setFormData] = useState({ ...INITIAL_FORM_DATA });
 
       const scrollContainerRef = useRef(null);
       const todayRef = useRef(null);
       const adminMonthScrollRefs = useRef([]);
       const currentAdminMonthRef = useRef(null);
+
+      const anyModalOpen = isHolidayModalOpen || isMonthModalOpen || isDayModalOpen || isAdminModalOpen;
+
+      const resetAdminForm = () => {
+        setAdminSelectedDate(null);
+        setFormData({ ...INITIAL_FORM_DATA });
+      };
+
+      const closeAdminModal = () => {
+        setIsAdminModalOpen(false);
+        resetAdminForm();
+      };
+
+      const handleFormTypeChange = (nextType) => {
+        setFormData(prev => {
+          const usesTime = nextType === 'Evento' || nextType === 'Informe';
+          const usesChangeDate = CHANGE_DATE_TYPES.includes(nextType);
+
+          return {
+            ...prev,
+            type: nextType,
+            classification: nextType === 'Informe' ? (prev.classification || INITIAL_FORM_DATA.classification) : INITIAL_FORM_DATA.classification,
+            hasPeriod: nextType === 'Informe' ? prev.hasPeriod : false,
+            startTime: usesTime ? prev.startTime : INITIAL_FORM_DATA.startTime,
+            endTime: usesTime ? prev.endTime : INITIAL_FORM_DATA.endTime,
+            location: nextType === 'Evento' ? prev.location : INITIAL_FORM_DATA.location,
+            targetRoles: nextType === 'Evento' ? prev.targetRoles : INITIAL_FORM_DATA.targetRoles,
+            originalDate: usesChangeDate ? prev.originalDate : INITIAL_FORM_DATA.originalDate,
+            newDate: usesChangeDate ? prev.newDate : INITIAL_FORM_DATA.newDate
+          };
+        });
+      };
 
       const ensureUserProfile = async (currentUser) => {
         if (!currentUser?.id) return null;
@@ -194,6 +239,14 @@
 
         return () => subscription.unsubscribe();
       }, []);
+
+      useEffect(() => {
+        document.body.style.overflow = anyModalOpen ? 'hidden' : '';
+
+        return () => {
+          document.body.style.overflow = '';
+        };
+      }, [anyModalOpen]);
 
       useEffect(() => {
         if (user) {
@@ -300,56 +353,62 @@
       // --- LÓGICA DE ADMINISTRAÇÃO (SALVAR NO SUPABASE) ---
       const handleFormSubmit = async (e) => {
         e.preventDefault();
-        if (!adminSelectedDate || !formData.title.trim()) return;
+        if (!adminSelectedDate || !formData.title.trim() || isSubmitting) return;
         setIsSubmitting(true);
 
-        let attachmentPath = null;
-        
-        if (formData.file) {
-          const fileExt = formData.file.name.split('.').pop();
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-          
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('arquivos avisos')
-            .upload(`anexos/${fileName}`, formData.file);
-          
-          if (uploadError) {
-            alert('Erro ao fazer upload do arquivo: ' + uploadError.message);
-            setIsSubmitting(false);
+        try {
+          let attachmentPath = null;
+
+          if (formData.file) {
+            const fileExt = formData.file.name.split('.').pop();
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('arquivos avisos')
+              .upload(`anexos/${fileName}`, formData.file);
+
+            if (uploadError) {
+              alert('Erro ao fazer upload do arquivo: ' + uploadError.message);
+              return;
+            }
+            attachmentPath = uploadData.path;
+          }
+
+          const yyyy = adminSelectedDate.getFullYear();
+          const mm = String(adminSelectedDate.getMonth() + 1).padStart(2, '0');
+          const dd = String(adminSelectedDate.getDate()).padStart(2, '0');
+          const dateString = `${yyyy}-${mm}-${dd}`;
+          const isChangeDateType = CHANGE_DATE_TYPES.includes(formData.type);
+
+          const newEventData = {
+            date: dateString, title: formData.title, description: formData.description,
+            type: formData.type, department: formData.department,
+            has_attachment: !!formData.file, attachment_path: attachmentPath, created_by: user?.id,
+            start_time: formData.type === 'Evento' || (formData.type === 'Informe' && formData.hasPeriod) ? formData.startTime : null,
+            end_time: formData.type === 'Evento' || (formData.type === 'Informe' && formData.hasPeriod) ? formData.endTime : null,
+            location: formData.type === 'Evento' ? formData.location : null,
+            target_roles: formData.type === 'Evento' ? formData.targetRoles : null,
+            classification: formData.type === 'Informe' ? formData.classification : null,
+            has_period: formData.type === 'Informe' ? formData.hasPeriod : false,
+            original_date: isChangeDateType ? formData.originalDate : null,
+            new_date: isChangeDateType ? formData.newDate : null,
+          };
+
+          const { error } = await supabase.from('events').insert([newEventData]);
+
+          if (error) {
+            alert('Erro ao salvar no banco de dados: ' + error.message);
             return;
           }
-          attachmentPath = uploadData.path;
-        }
 
-        const yyyy = adminSelectedDate.getFullYear();
-        const mm = String(adminSelectedDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(adminSelectedDate.getDate()).padStart(2, '0');
-        const dateString = `${yyyy}-${mm}-${dd}`;
-
-        const newEventData = {
-          date: dateString, title: formData.title, description: formData.description,
-          type: formData.type, department: formData.department,
-          has_attachment: !!formData.file, attachment_path: attachmentPath, created_by: user?.id,
-          start_time: formData.type === 'Evento' || (formData.type === 'Informe' && formData.hasPeriod) ? formData.startTime : null,
-          end_time: formData.type === 'Evento' || (formData.type === 'Informe' && formData.hasPeriod) ? formData.endTime : null,
-          location: formData.type === 'Evento' ? formData.location : null,
-          target_roles: formData.type === 'Evento' ? formData.targetRoles : null,
-          classification: formData.type === 'Informe' ? formData.classification : null,
-          has_period: formData.type === 'Informe' ? formData.hasPeriod : false,
-          original_date: formData.type === 'Alteração de Folga' || formData.type === 'Troca de Feriado' ? formData.originalDate : null,
-          new_date: formData.type === 'Alteração de Folga' || formData.type === 'Troca de Feriado' ? formData.newDate : null,
-        };
-
-        const { error } = await supabase.from('events').insert([newEventData]);
-        setIsSubmitting(false);
-        
-        if (error) {
-          alert('Erro ao salvar no banco de dados: ' + error.message);
-        } else {
           alert('Registro adicionado com sucesso!');
-          setAdminSelectedDate(null);
-          setFormData({ type: 'Evento', department: 'RH', classification: 'Geral', title: '', description: '', startTime: '09:00', endTime: '10:00', location: '', targetRoles: '', hasPeriod: false, originalDate: '', newDate: '', file: null });
-          fetchData(); 
+          resetAdminForm();
+          fetchData();
+        } catch (error) {
+          console.error('Erro inesperado ao salvar registro:', error);
+          alert('Erro inesperado ao salvar registro. Verifique o console para mais detalhes.');
+        } finally {
+          setIsSubmitting(false);
         }
       };
 
@@ -359,7 +418,7 @@
       const goToToday = () => setViewDate(todayDate);
       const openDayDetails = (day) => { setSelectedDay(day); setIsDayModalOpen(true); };
       const openAdminModal = () => {
-        setAdminSelectedDate(null);
+        resetAdminForm();
         setIsAdminModalOpen(true);
       };
       const scrollAdminMonthDays = (monthIndex, direction) => {
@@ -614,7 +673,7 @@
             <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
             <div className={`relative w-full h-full bg-white shadow-2xl flex flex-col overflow-hidden modal-animate mt-12 rounded-t-2xl ${modalPanelClass}`}>
               <div className="w-full flex justify-center pt-3 pb-1 md:hidden bg-white" onClick={onClose}><div className="w-12 h-1.5 bg-slate-200 rounded-full"></div></div>
-              <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 bg-white z-10">
+              <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 bg-white z-20">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg text-white flex-shrink-0 ${colorClass}`}><Icon size={24} /></div>
                   <h3 className="text-lg md:text-2xl font-bold text-brand-900 leading-tight">{title}</h3>
@@ -1117,7 +1176,7 @@
           </Modal>
 
           {/* ================= MODAL PAINEL ADMIN (INSERÇÃO NO SUPABASE) ================= */}
-          <Modal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} title="Gestão de Calendário" icon={Briefcase} colorClass="bg-brand-600" desktopFullScreen={true}>
+          <Modal isOpen={isAdminModalOpen} onClose={closeAdminModal} title="Gestão de Calendário" icon={Briefcase} colorClass="bg-brand-600" desktopFullScreen={true}>
             {!adminSelectedDate ? (
               <div className="space-y-6">
                 <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1215,7 +1274,7 @@
                     
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tipo de Registro</label>
-                      <select value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-brand-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none font-medium">
+                      <select value={formData.type} onChange={(e) => handleFormTypeChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 text-brand-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5 outline-none font-medium">
                         <option value="Evento">Evento</option>
                         <option value="Informe">Informe</option>
                         <option value="Alteração de Folga">Alteração de Folga</option>
@@ -1284,12 +1343,12 @@
 
                     <div className="md:col-span-2">
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Anexos (PDF, Imagem, etc)</label>
-                       <div className="flex items-center gap-3">
-                         <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold rounded-lg cursor-pointer transition-colors border border-slate-200">
+                       <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
+                         <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold rounded-lg cursor-pointer transition-colors border border-slate-200 flex-shrink-0">
                            <Paperclip size={16} /> Selecionar Arquivo
-                           <input type="file" className="hidden" onChange={(e) => setFormData({...formData, file: e.target.files[0]})} />
+                           <input type="file" className="hidden" onChange={(e) => setFormData({...formData, file: e.target.files[0] || null})} />
                          </label>
-                         <span className="text-sm font-medium text-slate-400">
+                         <span className="text-sm font-medium text-slate-400 min-w-0 max-w-full truncate" title={formData.file ? formData.file.name : ''}>
                            {formData.file ? `Arquivo selecionado: ${formData.file.name}` : 'Nenhum arquivo selecionado.'}
                          </span>
                        </div>
@@ -1298,7 +1357,7 @@
                   </div>
 
                   <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-6">
-                    <button type="button" onClick={() => setAdminSelectedDate(null)} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                    <button type="button" onClick={resetAdminForm} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                       Cancelar
                     </button>
                     <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50">
