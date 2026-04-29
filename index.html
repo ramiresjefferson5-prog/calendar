@@ -132,6 +132,33 @@
       { id: 'm14', date: '2026-12-25', name: 'Natal', type: 'nacional' },
     ];
 
+    // --- COMPONENTE MODAL GLOBAL (mantido fora do App para evitar remount/piscada em inputs) ---
+    const Modal = ({ isOpen, onClose, title, children, icon: Icon, colorClass, desktopFullScreen = false }) => {
+      if (!isOpen) return null;
+      const modalPaddingClass = desktopFullScreen ? 'md:p-0' : 'md:p-6';
+      const modalPanelClass = desktopFullScreen
+        ? 'md:h-screen md:max-h-screen md:max-w-none md:rounded-none md:mt-0'
+        : 'md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl md:mt-0 md:rounded-t-2xl';
+
+      return (
+        <div className={`fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 pb-0 ${modalPaddingClass}`}>
+          <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+          <div className={`relative w-full h-full bg-white shadow-2xl flex flex-col overflow-hidden modal-animate mt-12 rounded-t-2xl ${modalPanelClass}`}>
+            <div className="w-full flex justify-center pt-3 pb-1 md:hidden bg-white" onClick={onClose}><div className="w-12 h-1.5 bg-slate-200 rounded-full"></div></div>
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 bg-white z-20">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg text-white flex-shrink-0 ${colorClass}`}><Icon size={24} /></div>
+                <h3 className="text-lg md:text-2xl font-bold text-brand-900 leading-tight">{title}</h3>
+              </div>
+              <button onClick={onClose} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200 flex-shrink-0 ml-2"><X size={20} /></button>
+            </div>
+            <div className="p-4 md:p-8 overflow-y-auto flex-1 hide-scrollbar bg-slate-50/50">{children}</div>
+          </div>
+        </div>
+      );
+    };
+
+
     function App() {
       // --- ESTADOS (State) ---
       const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' ou 'login'
@@ -656,31 +683,6 @@
                   {event.description}
                 </div>
               )}
-            </div>
-          </div>
-        );
-      };
-
-      const Modal = ({ isOpen, onClose, title, children, icon: Icon, colorClass, desktopFullScreen = false }) => {
-        if (!isOpen) return null;
-        const modalPaddingClass = desktopFullScreen ? 'md:p-0' : 'md:p-6';
-        const modalPanelClass = desktopFullScreen
-          ? 'md:h-screen md:max-h-screen md:max-w-none md:rounded-none md:mt-0'
-          : 'md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-2xl md:mt-0 md:rounded-t-2xl';
-
-        return (
-          <div className={`fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 pb-0 ${modalPaddingClass}`}>
-            <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-            <div className={`relative w-full h-full bg-white shadow-2xl flex flex-col overflow-hidden modal-animate mt-12 rounded-t-2xl ${modalPanelClass}`}>
-              <div className="w-full flex justify-center pt-3 pb-1 md:hidden bg-white" onClick={onClose}><div className="w-12 h-1.5 bg-slate-200 rounded-full"></div></div>
-              <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 bg-white z-20">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg text-white flex-shrink-0 ${colorClass}`}><Icon size={24} /></div>
-                  <h3 className="text-lg md:text-2xl font-bold text-brand-900 leading-tight">{title}</h3>
-                </div>
-                <button onClick={onClose} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200 flex-shrink-0 ml-2"><X size={20} /></button>
-              </div>
-              <div className="p-4 md:p-8 overflow-y-auto flex-1 hide-scrollbar bg-slate-50/50">{children}</div>
             </div>
           </div>
         );
