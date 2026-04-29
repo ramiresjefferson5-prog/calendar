@@ -139,6 +139,28 @@
       { id: 'm14', date: '2026-12-25', name: 'Natal', type: 'nacional' },
     ];
 
+    // --- FERIADOS QUE DESCONTAM DIAS ÚTEIS NO CÁLCULO DE PROGRESSO ---
+    // Base 2026 Caucaia/CE: segunda a sexta, descontando apenas feriados em dias úteis.
+    // Pontos facultativos/emendas, como Carnaval, não entram neste cálculo.
+    const BUSINESS_DAY_HOLIDAYS_BY_YEAR = {
+      2026: [
+        '2026-01-01',
+        '2026-03-19',
+        '2026-03-25',
+        '2026-04-03',
+        '2026-04-21',
+        '2026-05-01',
+        '2026-06-04',
+        '2026-09-07',
+        '2026-10-12',
+        '2026-10-15',
+        '2026-11-02',
+        '2026-11-20',
+        '2026-12-08',
+        '2026-12-25',
+      ],
+    };
+
     // --- COMPONENTE MODAL GLOBAL (mantido fora do App para evitar remount/piscada em inputs) ---
     const Modal = ({ isOpen, onClose, title, children, icon: Icon, colorClass, desktopFullScreen = false }) => {
       if (!isOpen) return null;
@@ -834,13 +856,54 @@
 
       const yearProgress = useMemo(() => {
         const year = todayDate.getFullYear();
-        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
-        const totalDays = isLeapYear ? 366 : 365;
-        const diffTime = Math.abs(todayDate - new Date(year, 0, 1));
-        const elapsedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-        const elapsedWeeks = Math.ceil(elapsedDays / 7);
-        return { elapsedDays, totalDays, daysPercentage: ((elapsedDays / totalDays) * 100).toFixed(1), elapsedWeeks, totalWeeks: 52, weeksPercentage: ((elapsedWeeks / 52) * 100).toFixed(1) };
-      }, [todayDate]);
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const yearStart = new Date(year, 0, 1);
+        const yearEnd = new Date(year, 11, 31);
+        const todayOnly = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+        const businessHolidaySet = new Set(
+          (BUSINESS_DAY_HOLIDAYS_BY_YEAR[year] || allHolidays.map(h => h.date))
+            .filter(Boolean)
+        );
+
+        const formatDateKey = (date) => {
+          const yyyy = date.getFullYear();
+          const mm = String(date.getMonth() + 1).padStart(2, '0');
+          const dd = String(date.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        };
+
+        const countBusinessDays = (startDate, endDate) => {
+          let count = 0;
+          const current = new Date(startDate);
+
+          while (current <= endDate) {
+            const isWeekday = current.getDay() !== 0 && current.getDay() !== 6;
+            const isHoliday = businessHolidaySet.has(formatDateKey(current));
+
+            if (isWeekday && !isHoliday) {
+              count++;
+            }
+
+            current.setDate(current.getDate() + 1);
+          }
+
+          return count;
+        };
+
+        const totalDays = countBusinessDays(yearStart, yearEnd);
+        const elapsedDays = countBusinessDays(yearStart, todayOnly);
+        const elapsedCalendarDays = Math.floor((todayOnly - yearStart) / msPerDay) + 1;
+        const elapsedWeeks = Math.ceil(elapsedCalendarDays / 7);
+
+        return {
+          elapsedDays,
+          totalDays,
+          daysPercentage: totalDays > 0 ? ((elapsedDays / totalDays) * 100).toFixed(1) : '0.0',
+          elapsedWeeks,
+          totalWeeks: 52,
+          weeksPercentage: ((elapsedWeeks / 52) * 100).toFixed(1)
+        };
+      }, [todayDate, allHolidays]);
 
       const currentWeekNumber = useMemo(() => {
         const days = Math.floor((viewDate - new Date(viewDate.getFullYear(), 0, 1)) / (24 * 60 * 60 * 1000));
@@ -1319,7 +1382,7 @@
               <div className="mt-8 pt-8 border-t border-slate-200 w-full">
                 <h3 className="text-lg font-bold text-brand-900 mb-4 flex items-center gap-2"><Clock size={20} className="text-slate-500" />Progresso do Ano ({todayDate.getFullYear()})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 w-full">
-                   <DonutChart percentage={yearProgress.daysPercentage} color="var(--brand-primary, #1E3A8A)" label="Dias Decorridos" subLabel={`${yearProgress.elapsedDays} de ${yearProgress.totalDays} dias`} />
+                   <DonutChart percentage={yearProgress.daysPercentage} color="var(--brand-primary, #1E3A8A)" label="Dias Úteis Decorridos" subLabel={`${yearProgress.elapsedDays} de ${yearProgress.totalDays} dias úteis`} />
                    <DonutChart percentage={yearProgress.weeksPercentage} color="var(--brand-accent, #00D4FF)" label="Semanas Decorridas" subLabel={`${yearProgress.elapsedWeeks} de ${yearProgress.totalWeeks} semanas`} />
                 </div>
               </div>
