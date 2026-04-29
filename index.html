@@ -139,6 +139,7 @@
       const [isDayModalOpen, setIsDayModalOpen] = useState(false);
       const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
       const [selectedDay, setSelectedDay] = useState(null);
+      const [expandedMonthKey, setExpandedMonthKey] = useState(null);
 
       // Estado do Formulário de Inserção
       const [adminSelectedDate, setAdminSelectedDate] = useState(null);
@@ -153,6 +154,7 @@
       const scrollContainerRef = useRef(null);
       const todayRef = useRef(null);
       const adminMonthScrollRefs = useRef([]);
+      const currentAdminMonthRef = useRef(null);
 
       const ensureUserProfile = async (currentUser) => {
         if (!currentUser?.id) return null;
@@ -214,6 +216,12 @@
           setProfile(null);
         }
       }, [user]);
+
+      useEffect(() => {
+        if (isMonthModalOpen) {
+          setExpandedMonthKey(null);
+        }
+      }, [isMonthModalOpen]);
 
       const fetchData = async () => {
         const { data: eventsData, error: eventsError } = await supabase.from('events').select('*');
@@ -350,10 +358,33 @@
       const prevWeek = () => { const newDate = new Date(viewDate); newDate.setDate(viewDate.getDate() - 7); setViewDate(newDate); };
       const goToToday = () => setViewDate(todayDate);
       const openDayDetails = (day) => { setSelectedDay(day); setIsDayModalOpen(true); };
+      const openAdminModal = () => {
+        setAdminSelectedDate(null);
+        setIsAdminModalOpen(true);
+      };
       const scrollAdminMonthDays = (monthIndex, direction) => {
         const container = adminMonthScrollRefs.current[monthIndex];
         if (container) container.scrollBy({ left: direction * 360, behavior: 'smooth' });
       };
+
+      useEffect(() => {
+        if (!isAdminModalOpen || adminSelectedDate) return;
+        const currentMonthIndex = todayDate.getMonth();
+
+        const timer = setTimeout(() => {
+          if (currentAdminMonthRef.current) {
+            currentAdminMonthRef.current.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+          }
+
+          const currentMonthContainer = adminMonthScrollRefs.current[currentMonthIndex];
+          const currentDayButton = currentMonthContainer?.querySelector('[data-admin-current-day="true"]');
+          if (currentDayButton) {
+            currentDayButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          }
+        }, 350);
+
+        return () => clearTimeout(timer);
+      }, [isAdminModalOpen, adminSelectedDate]);
 
       useEffect(() => {
         if (todayRef.current && scrollContainerRef.current && !isAdminModalOpen && currentView === 'dashboard') {
@@ -370,6 +401,23 @@
         if (!date) return '';
         const formatted = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
         return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+      };
+
+      const buildMonthWeeks = (baseDate) => {
+        const year = baseDate.getFullYear();
+        const month = baseDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        let weeks = [], currentWeek = [];
+        for (let i = 0; i < new Date(year, month, 1).getDay(); i++) currentWeek.push(null);
+        for (let i = 1; i <= daysInMonth; i++) {
+          currentWeek.push(new Date(year, month, i));
+          if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+        }
+        if (currentWeek.length > 0) {
+          while (currentWeek.length < 7) currentWeek.push(null);
+          weeks.push(currentWeek);
+        }
+        return weeks;
       };
 
       const yearProgress = useMemo(() => {
@@ -417,6 +465,14 @@
           days: Array.from({length: new Date(year, m + 1, 0).getDate()}, (_, d) => new Date(year, m, d + 1))
         }));
       }, [todayDate]);
+
+      const futureMonths = useMemo(() => {
+        return allYearMonths.filter(month => {
+          const monthStart = new Date(month.days[0].getFullYear(), month.days[0].getMonth(), 1);
+          const currentMonthStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+          return monthStart >= currentMonthStart;
+        });
+      }, [allYearMonths, todayDate]);
 
       const upcomingHolidaysList = useMemo(() => {
         return allHolidays.map(h => ({ ...h, exactDate: new Date(h.date + 'T12:00:00') }))
@@ -708,12 +764,8 @@
               </div>
 
               <div className="flex items-center gap-2 md:gap-4">
-                <div className="bg-slate-100 rounded-lg px-3 py-1.5 md:px-4 md:py-2 text-xs md:text-sm font-semibold text-slate-600 flex items-center gap-2 border border-slate-200 cursor-pointer hover:bg-slate-200 transition-colors" onClick={goToToday}>
-                  <Clock size={16} className="text-brand-500" /><span className="hidden md:inline">Ir para Hoje</span>
-                </div>
-                
                 {user && profile?.is_admin && (
-                  <button onClick={() => setIsAdminModalOpen(true)} className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3 py-1.5 md:px-4 md:py-2 text-xs md:text-sm font-bold flex items-center gap-2 shadow-sm transition-colors shadow-brand-600/20">
+                  <button onClick={openAdminModal} className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3 py-1.5 md:px-4 md:py-2 text-xs md:text-sm font-bold flex items-center gap-2 shadow-sm transition-colors shadow-brand-600/20">
                     <PlusCircle size={16} /><span className="hidden sm:inline">Adicionar</span>
                   </button>
                 )}
@@ -745,9 +797,15 @@
                         </h3>
                         <span className="bg-brand-50 text-brand-700 px-2.5 py-1 rounded-md text-[10px] md:text-xs font-bold border border-brand-100 uppercase tracking-wider">S-{currentWeekNumber}</span>
                       </div>
-                      <div className="hidden md:flex gap-2">
-                        <button onClick={prevWeek} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronLeft size={20} /></button>
-                        <button onClick={nextWeek} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronRight size={20} /></button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={goToToday} className="p-1.5 md:px-3 md:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm flex items-center gap-2" title="Ir para hoje">
+                          <Clock size={20} className="text-brand-500" />
+                          <span className="hidden md:inline text-sm font-bold">Hoje</span>
+                        </button>
+                        <div className="hidden md:flex gap-2">
+                          <button onClick={prevWeek} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronLeft size={20} /></button>
+                          <button onClick={nextWeek} className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-brand-600 text-slate-500 transition-colors border border-slate-200 shadow-sm"><ChevronRight size={20} /></button>
+                        </div>
                       </div>
                     </div>
                     <div ref={scrollContainerRef} className="flex overflow-x-auto hide-scrollbar gap-2 md:gap-4 pt-2 pb-3 md:grid md:grid-cols-7 snap-x snap-mandatory">
@@ -951,43 +1009,109 @@
           </Modal>
 
           {/* Modal Mês Estendido */}
-          <Modal isOpen={isMonthModalOpen} onClose={() => setIsMonthModalOpen(false)} title={`Visão Mensal: ${new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(viewDate)}`} icon={CalendarIcon} colorClass="bg-brand-600">
-            <div className="w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
-                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-                  <div key={day} className="text-center text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider py-3 border-r border-slate-200 last:border-r-0">{day}</div>
-                ))}
+          <Modal isOpen={isMonthModalOpen} onClose={() => setIsMonthModalOpen(false)} title={`Visão Mensal: ${todayDate.getFullYear()} - meses futuros`} icon={CalendarIcon} colorClass="bg-brand-600" desktopFullScreen={true}>
+            <div className="space-y-5">
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <h4 className="text-base md:text-lg font-bold text-brand-900">Meses liberados para consulta</h4>
+                    <p className="text-xs md:text-sm text-slate-500 font-medium mt-1">
+                      A visão mensal agora mostra o mês atual e os próximos meses do ano, facilitando a navegação sem voltar para meses já encerrados.
+                    </p>
+                  </div>
+                  <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                    <span className="px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100">● Hoje</span>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">Feriado</span>
+                    <span className="px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100">Evento</span>
+                    <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">Faturamento</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col">
-                {monthWeeks.map((week, wIdx) => (
-                  <div key={wIdx} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0">
-                    {week.map((day, dIdx) => {
-                      if (!day) return <div key={`empty-${wIdx}-${dIdx}`} className="min-h-[80px] md:min-h-[100px] border-r border-slate-100 last:border-r-0 bg-slate-50/50"></div>;
-                      const isActualToday = isSameDay(day, todayDate);
-                      const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
-                      const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
-                      const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), day) && b.type === 'Faturamento');
 
-                      return (
-                        <div key={dIdx} onClick={() => { setIsMonthModalOpen(false); openDayDetails(day); }} className={`min-h-[80px] md:min-h-[100px] p-1.5 md:p-2 border-r border-slate-100 last:border-r-0 flex flex-col transition-all cursor-pointer relative group ${isActualToday ? 'bg-brand-50/30' : 'hover:bg-slate-50'}`}>
-                          <div className="flex justify-between items-start mb-1">
-                            <div className={`w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full text-xs md:text-sm font-bold ${isActualToday ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-700 group-hover:bg-brand-100 group-hover:text-brand-700'}`}>{day.getDate()}</div>
-                            <div className="flex gap-0.5 md:hidden">
-                              {dayEvents.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>}
-                              {dayHolidays.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
-                              {dayBillings.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
-                            </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-5">
+                {futureMonths.map((month) => {
+                  const monthDate = month.days[0];
+                  const monthWeeksList = buildMonthWeeks(monthDate);
+                  const monthKey = `${monthDate.getFullYear()}-${monthDate.getMonth()}`;
+                  const isExpanded = expandedMonthKey === monthKey;
+                  const isCurrentMonth = monthDate.getMonth() === todayDate.getMonth() && monthDate.getFullYear() === todayDate.getFullYear();
+                  const monthEvents = hrEvents.filter(e => e.type !== 'Faturamento' && e.date && new Date(e.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(e.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
+                  const monthHolidays = allHolidays.filter(h => h.date && new Date(h.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(h.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
+                  const monthBillings = hrEvents.filter(e => e.type === 'Faturamento' && e.date && new Date(e.date + 'T12:00:00').getMonth() === monthDate.getMonth() && new Date(e.date + 'T12:00:00').getFullYear() === monthDate.getFullYear()).length;
+
+                  return (
+                    <div key={monthKey} className={`bg-white rounded-2xl border overflow-hidden transition-all duration-300 ${isCurrentMonth ? 'border-brand-200 ring-2 ring-brand-100' : 'border-slate-200'} ${isExpanded ? 'shadow-md' : 'shadow-sm hover:shadow-md'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMonthKey(isExpanded ? null : monthKey)}
+                        className={`w-full p-4 flex items-start justify-between gap-3 text-left transition-colors ${isCurrentMonth ? 'bg-brand-50/60 hover:bg-brand-50 border-brand-100' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`}
+                      >
+                        <div>
+                          <h4 className="text-base md:text-lg font-black text-brand-900 capitalize flex items-center gap-2">
+                            <CalendarIcon size={18} className={isCurrentMonth ? 'text-brand-600' : 'text-slate-500'} />
+                            {month.name}
+                          </h4>
+                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1">{monthDate.getFullYear()}</p>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="hidden md:flex flex-wrap justify-end gap-1.5 max-w-[260px]">
+                            {isCurrentMonth && <span className="px-2 py-0.5 rounded-full bg-brand-600 text-white text-[9px] font-bold uppercase tracking-wider">Mês atual</span>}
+                            {monthHolidays > 0 && <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-bold uppercase tracking-wider">{monthHolidays} feriado(s)</span>}
+                            {monthEvents > 0 && <span className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-100 text-[9px] font-bold uppercase tracking-wider">{monthEvents} evento(s)</span>}
+                            {monthBillings > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100 text-[9px] font-bold uppercase tracking-wider">{monthBillings} fat.</span>}
                           </div>
-                          <div className="hidden md:flex flex-col gap-1 w-full overflow-hidden flex-1">
-                            {dayHolidays.length > 0 && dayHolidays.slice(0, 1).map((h, i) => (<div key={`h-${i}`} className="text-[9px] font-bold px-1 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100 truncate w-full" title={h.name}>{h.name}</div>))}
-                            {dayEvents.length > 0 && dayEvents.slice(0, 1).map((e, i) => (<div key={`e-${i}`} className="text-[9px] font-bold px-1 py-0.5 bg-brand-50 text-brand-700 rounded border border-brand-100 truncate w-full" title={e.title}>{e.type}</div>))}
-                            {dayBillings.length > 0 && dayBillings.slice(0, 1).map((b, i) => (<div key={`b-${i}`} className="text-[9px] font-bold px-1 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-100 truncate w-full" title="Faturamento">Fat: {b.billing_value}</div>))}
+                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center flex-shrink-0 transition-colors ${isExpanded ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-500 border-slate-200'}`}>
+                            <ChevronRight size={18} className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''}`} />
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                      </button>
+
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 bg-white">
+                          <div className="grid grid-cols-7 bg-white border-b border-slate-100">
+                            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+                              <div key={day} className="text-center text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider py-2 border-r border-slate-100 last:border-r-0">{day}</div>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-col">
+                            {monthWeeksList.map((week, wIdx) => (
+                              <div key={wIdx} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0">
+                                {week.map((day, dIdx) => {
+                                  if (!day) return <div key={`empty-${wIdx}-${dIdx}`} className="min-h-[62px] md:min-h-[82px] border-r border-slate-100 last:border-r-0 bg-slate-50/50"></div>;
+
+                                  const isActualToday = isSameDay(day, todayDate);
+                                  const dayEvents = hrEvents.filter(e => isSameDay(new Date(e.date + 'T12:00:00'), day) && e.type !== 'Faturamento');
+                                  const dayHolidays = allHolidays.filter(h => isSameDay(new Date(h.date + 'T12:00:00'), day));
+                                  const dayBillings = hrEvents.filter(b => isSameDay(new Date(b.date + 'T12:00:00'), day) && b.type === 'Faturamento');
+
+                                  return (
+                                    <div key={dIdx} onClick={() => { setIsMonthModalOpen(false); openDayDetails(day); }} className={`min-h-[62px] md:min-h-[82px] p-1.5 md:p-2 border-r border-slate-100 last:border-r-0 flex flex-col transition-all cursor-pointer relative group ${isActualToday ? 'bg-brand-50/60' : 'hover:bg-slate-50'} ${dayHolidays.length > 0 ? 'ring-1 ring-inset ring-emerald-100' : ''}`}>
+                                      <div className="flex justify-between items-start mb-1">
+                                        <div className={`w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full text-xs md:text-sm font-bold ${isActualToday ? 'bg-brand-600 text-white shadow-sm' : dayHolidays.length > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : dayEvents.length > 0 ? 'bg-brand-50 text-brand-700 border border-brand-100' : 'text-slate-700 group-hover:bg-brand-100 group-hover:text-brand-700'}`}>{day.getDate()}</div>
+                                        <div className="flex gap-0.5 md:hidden">
+                                          {dayEvents.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>}
+                                          {dayHolidays.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                                          {dayBillings.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
+                                        </div>
+                                      </div>
+
+                                      <div className="hidden md:flex flex-col gap-1 w-full overflow-hidden flex-1">
+                                        {dayHolidays.length > 0 && dayHolidays.slice(0, 1).map((h, i) => (<div key={`h-${i}`} className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100 truncate w-full" title={h.name}>🎌 {h.name}</div>))}
+                                        {dayEvents.length > 0 && dayEvents.slice(0, 1).map((e, i) => (<div key={`e-${i}`} className="text-[9px] font-bold px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded border border-brand-100 truncate w-full" title={e.title}>📌 {e.type}</div>))}
+                                        {dayBillings.length > 0 && dayBillings.slice(0, 1).map((b, i) => (<div key={`b-${i}`} className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-100 truncate w-full" title="Faturamento">💰 Fat.</div>))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </Modal>
@@ -996,19 +1120,28 @@
           <Modal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} title="Gestão de Calendário" icon={Briefcase} colorClass="bg-brand-600" desktopFullScreen={true}>
             {!adminSelectedDate ? (
               <div className="space-y-6">
-                <p className="text-sm text-slate-500 font-medium mb-6">Selecione o dia desejado nos blocos abaixo para adicionar um novo registro.</p>
+                <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-slate-500 font-medium">Selecione um dia desbloqueado para adicionar um novo registro. Meses encerrados ficam sinalizados e bloqueados para novas edições.</p>
+                  <div className="hidden md:flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                    <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-100">🔒 Encerrado</span>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">🔓 Liberado</span>
+                  </div>
+                </div>
                 {allYearMonths.map((month, mIdx) => {
                   const isPastMonth = mIdx < todayDate.getMonth();
+                  const isCurrentMonth = mIdx === todayDate.getMonth();
                   const monthHolidays = allHolidays.filter(h => month.days.some(day => isSameDay(new Date(h.date + 'T12:00:00'), day)));
                   const monthEvents = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type !== 'Faturamento');
                   const monthBillings = hrEvents.filter(e => month.days.some(day => isSameDay(new Date(e.date + 'T12:00:00'), day)) && e.type === 'Faturamento');
 
                   return (
-                    <div key={mIdx} className={`rounded-xl border shadow-sm overflow-hidden transition-all ${isPastMonth ? 'border-red-100 bg-red-50/70 opacity-80' : 'bg-white border-slate-200'}`}>
-                      <div className={`${isPastMonth ? 'bg-red-50/80 border-red-100' : 'bg-slate-50 border-slate-200'} border-b px-4 py-3 flex items-center justify-between gap-3`}>
+                    <div ref={isCurrentMonth ? currentAdminMonthRef : null} key={mIdx} className={`rounded-xl border shadow-sm overflow-hidden transition-all scroll-mt-6 ${isPastMonth ? 'border-red-100 bg-red-50/70 opacity-80' : isCurrentMonth ? 'bg-white border-brand-200 ring-2 ring-brand-100 shadow-md' : 'bg-white border-slate-200'}`}>
+                      <div className={`${isPastMonth ? 'bg-red-50/80 border-red-100' : isCurrentMonth ? 'bg-brand-50 border-brand-100' : 'bg-slate-50 border-slate-200'} border-b px-4 py-3 flex items-center justify-between gap-3`}>
                         <div className="flex items-center gap-3 min-w-0">
                           <h4 className={`font-bold capitalize text-sm md:text-base flex items-center gap-2 ${isPastMonth ? 'text-red-700/80' : 'text-brand-900'}`}><CalendarIcon size={16} className={isPastMonth ? "text-red-400" : "text-brand-500"} /> {month.name}</h4>
                           <div className="hidden md:flex items-center gap-1.5">
+                            {isPastMonth ? <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-red-100/70 text-red-700 border border-red-200 whitespace-nowrap">🔒 Encerrado</span> : <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">🔓 Liberado</span>}
+                            {isCurrentMonth && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-brand-600 text-white border border-brand-600 whitespace-nowrap">Mês atual</span>}
                             {monthHolidays.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 whitespace-nowrap">🎌 {monthHolidays.length} feriado{monthHolidays.length > 1 ? 's' : ''}</span>}
                             {monthEvents.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">📌 {monthEvents.length} registro{monthEvents.length > 1 ? 's' : ''}</span>}
                             {monthBillings.length > 0 && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 whitespace-nowrap">💰 {monthBillings.length} faturamento{monthBillings.length > 1 ? 's' : ''}</span>}
@@ -1033,14 +1166,19 @@
                           const hasEvent = dayEvents.length > 0;
                           const hasBilling = dayBillings.length > 0;
                           const hasAnyMarker = hasHoliday || hasEvent || hasBilling;
+                          const isTodayDay = isSameDay(day, todayDate);
 
                           return (
                             <button
                               key={dIdx}
-                              onClick={() => setAdminSelectedDate(day)}
-                              className={`group flex-shrink-0 relative flex flex-col items-center justify-start p-3 w-16 md:w-28 min-h-[84px] md:min-h-[126px] rounded-lg border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${hasHoliday ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300' : hasEvent ? 'border-brand-200 bg-brand-50 text-brand-800 hover:border-brand-300' : hasBilling ? 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300' : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-600'}`}
-                              title={hasHoliday ? dayHolidays.map(h => h.name).join(', ') : hasEvent ? dayEvents.map(e => e.title).join(', ') : hasBilling ? 'Faturamento programado' : 'Adicionar registro'}
+                              type="button"
+                              disabled={isPastMonth}
+                              data-admin-current-day={isTodayDay ? 'true' : undefined}
+                              onClick={() => { if (!isPastMonth) setAdminSelectedDate(day); }}
+                              className={`group flex-shrink-0 relative flex flex-col items-center justify-start p-3 w-16 md:w-28 min-h-[84px] md:min-h-[126px] rounded-lg border transition-all duration-200 ${isPastMonth ? 'cursor-not-allowed border-red-100 bg-red-50/60 text-red-500 opacity-80' : `hover:-translate-y-0.5 hover:shadow-md ${hasHoliday ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300' : hasEvent ? 'border-brand-200 bg-brand-50 text-brand-800 hover:border-brand-300' : hasBilling ? 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300' : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-600'}`} ${isTodayDay ? 'ring-2 ring-brand-400 shadow-md' : ''}`}
+                              title={isPastMonth ? 'Mês encerrado para novas edições ou adições' : hasHoliday ? dayHolidays.map(h => h.name).join(', ') : hasEvent ? dayEvents.map(e => e.title).join(', ') : hasBilling ? 'Faturamento programado' : 'Adicionar registro'}
                             >
+                              {isPastMonth && <span className="hidden md:block absolute top-1.5 right-1.5 text-[11px]" aria-hidden="true">🔒</span>}
                               <span className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-70">{dayName}</span>
                               <span className="text-lg md:text-2xl font-black leading-none">{day.getDate()}</span>
                               <div className="flex gap-1 md:hidden mt-1">
