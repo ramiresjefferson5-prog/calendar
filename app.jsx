@@ -445,7 +445,7 @@
           is_admin: false
         };
 
-        const { data, error } = await supabase
+        const { data, error } = await se
           .from('profiles')
           .upsert([profilePayload], { onConflict: 'id', ignoreDuplicates: true })
           .select('*')
@@ -459,7 +459,7 @@
         return data;
       };
 
-      // --- BUSCA DE DADOS INICIAIS (SUPABASE) ---
+      // --- BUSCA DE DADOS INICIAIS (SE) ---
       useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
           setUser(session?.user ?? null);
@@ -1234,7 +1234,7 @@
                   {/* BLOCO 2: MURAL DE RH */}
                   <section className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
                     <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold text-brand-900 flex items-center gap-2"><div className="p-1.5 bg-brand-100 text-brand-600 rounded-lg"><Briefcase size={20} /></div>Mural do RH</h3>
+                      <h3 className="text-xl font-bold text-brand-900 flex items-center gap-2"><div className="p-1.5 bg-brand-100 text-brand-600 rounded-lg"><Briefcase size={20} /></div>Quadro de Avisos</h3>
                       <span className="bg-brand-50 text-brand-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-brand-100">{hrEvents.filter(e => e.type !== 'Faturamento').length} Lançamentos</span>
                     </div>
                     <div className="flex flex-col gap-4">
@@ -1798,7 +1798,7 @@
                       Cancelar
                     </button>
                     <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50">
-                      {isSubmitting ? 'A processar...' : <>{editingEventId ? <Pencil size={16} /> : <PlusCircle size={16} />} {editingEventId ? 'Atualizar Registro' : 'Salvar Registro no Supabase'}</>}
+                      {isSubmitting ? 'A processar...' : <>{editingEventId ? <Pencil size={16} /> : <PlusCircle size={16} />} {editingEventId ? 'Atualizar Registro' : 'Salvar Registro'}</>}
                     </button>
                   </div>
                 </form>
